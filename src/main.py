@@ -8,14 +8,14 @@ from pydantic import BaseModel, Field
 
 # Import logging_config first to apply patches
 import src.logging_config  # noqa: F401
-from llms.messages import (
+from src.llms.messages import (
     get_next_message_anthropic,
     get_next_message_deepseek,
     get_next_message_gemini,
     get_next_message_openai,
     get_next_message_openrouter,
 )
-from llms.models import Model
+from src.llms.models import Model
 from src.llms.structured import get_next_structure
 from src.models import GRID, Challenge, Example, Input
 
