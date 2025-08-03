@@ -912,6 +912,8 @@ async def run_from_json(
     limit: int | None,
     offset: int = 0,
 ) -> None:
+    SOLUTIONS_D = {}
+
     run_id = generate_run_id()
     print(f"\n{'=' * 50}")
     print(f"Starting new run with ID: {run_id}")
@@ -936,23 +938,24 @@ async def run_from_json(
     else:
         solutions_list = None
 
-    logfire.info(
-        "Starting run",
-        config=config.model_dump(),
-        challenges_path=str(challenges_path),
-        num_challenges=len(root_challenges),
-    )
+    with logfire.span("run_challenges", run_id=run_id):
+        logfire.info(
+            "Starting run",
+            config=config.model_dump(),
+            challenges_path=str(challenges_path),
+            num_challenges=len(root_challenges),
+        )
 
-    temp_attempts_dir.mkdir(exist_ok=True, parents=True)
+        temp_attempts_dir.mkdir(exist_ok=True, parents=True)
 
-    final_scores = await solve_challenges(
-        challenges=challenges_list,
-        attempts_path=attempts_path,
-        solution_grids_list=solutions_list,
-        config=config,
-        temp_attempts_dir=temp_attempts_dir,
-    )
-    logfire.info("Run completed", final_scores=final_scores)
+        final_scores = await solve_challenges(
+            challenges=challenges_list,
+            attempts_path=attempts_path,
+            solution_grids_list=solutions_list,
+            config=config,
+            temp_attempts_dir=temp_attempts_dir,
+        )
+        logfire.info("Run completed", final_scores=final_scores)
 
 
 async def run() -> None:
