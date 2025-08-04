@@ -991,13 +991,13 @@ async def run() -> None:
 
     temp_attempts_path = root_dir / "attempts" / f"arc-prize-{year}" / "temp_solutions"
 
-    from src.configs.grok_configs import grok_config
+    from src.configs.grok_configs import grok_config_prod
     from src.configs.fast_configs import mini_config
 
     await run_from_json(
         challenges_path=challenges_path,
         truth_solutions_path=solutions_path,
-        config=grok_config,
+        config=grok_config_prod,
         attempts_path=attempts_path,
         temp_attempts_dir=temp_attempts_path,
         limit=2,
