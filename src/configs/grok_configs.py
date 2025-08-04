@@ -8,7 +8,7 @@ grok_config_prod = RunConfig(
         Step(
             instruction_model=Model.grok_4,
             follow_model=Model.grok_4,
-            times=10,
+            times=20,
             timeout_secs=300,
             include_base64=False,
             use_diffs=True,
