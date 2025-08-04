@@ -912,6 +912,7 @@ async def run_from_json(
     limit: int | None,
     offset: int = 0,
 ) -> None:
+    global SOLUTIONS_D
     SOLUTIONS_D = {}
 
     run_id = generate_run_id()
