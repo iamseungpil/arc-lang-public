@@ -16,7 +16,7 @@ grok_config_prod = RunConfig(
         Step(
             instruction_model=Model.grok_4,
             follow_model=Model.grok_4,
-            times=27,
+            times=20,
             timeout_secs=300,
             include_base64=False,
             use_diffs=True,
@@ -34,7 +34,7 @@ grok_config_prod = RunConfig(
             top_scores_used=5,
             instruction_model=Model.grok_4,
             follow_model=Model.grok_4,
-            times=8,
+            times=5,
             timeout_secs=300,
             include_base64=False,
             use_diffs=True,
