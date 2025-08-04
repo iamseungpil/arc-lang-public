@@ -10,6 +10,7 @@ import asyncpg
 import logfire
 from pydantic import BaseModel, TypeAdapter
 
+from src.async_utils.semaphore_monitor import MonitoredSemaphore
 from src.configs.models import RunConfig, Step, StepRevision, StepRevisionPool
 from src.llms.structured import get_next_structure
 
@@ -860,7 +861,7 @@ async def solve_challenges(
     temp_attempts_dir: Path,
 ) -> float:
     # Create semaphore to limit concurrent tasks
-    semaphore = asyncio.Semaphore(config.max_concurrent_tasks)
+    semaphore = MonitoredSemaphore(config.max_concurrent_tasks, name="run_semaphore")
 
     async def solve_with_semaphore(
         challenge: Challenge,
@@ -966,36 +967,39 @@ async def run() -> None:
     train_or_eval = "evaluation"
     root_dir = Path(__file__).parent.parent
 
-    challenges_dir = (
+    challenges_path = (
         root_dir
         / "data"
         / f"arc-prize-{year}"
         / f"arc-agi_{train_or_eval}_challenges.json"
     )
 
-    solutions_dir = (
+    solutions_path = (
         root_dir
         / "data"
         / f"arc-prize-{year}"
         / f"arc-agi_{train_or_eval}_solutions.json"
     )
 
+    attempts_path = (
+        root_dir
+        / "attempts"
+        / f"arc-prize-{year}"
+        / f"arc-agi_{train_or_eval}_attempts.json"
+    )
+
+    temp_attempts_path = root_dir / "attempts" / f"arc-prize-{year}" / "temp_solutions"
+
     from src.configs.grok_configs import grok_config
     from src.configs.fast_configs import mini_config
 
     await run_from_json(
-        challenges_path=challenges_dir,
-        truth_solutions_path=solutions_dir,
+        challenges_path=challenges_path,
+        truth_solutions_path=solutions_path,
         config=grok_config,
-        attempts_path=root_dir
-        / "attempts"
-        / f"arc-prize-{year}"
-        / f"arc-agi_{train_or_eval}_attempts.json",
-        temp_attempts_dir=root_dir
-        / "attempts"
-        / f"arc-prize-{year}"
-        / "temp_solutions",
-        limit=3,
+        attempts_path=attempts_path,
+        temp_attempts_dir=temp_attempts_path,
+        limit=2,
         offset=0,
     )
 

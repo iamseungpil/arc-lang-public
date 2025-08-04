@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 from xai_sdk import AsyncClient as XaiAsyncClient
 from xai_sdk.chat import assistant, image, system, user
 
+from src.async_utils.semaphore_monitor import MonitoredSemaphore
 from src.llms.models import Model
 from src.utils import random_str
 
@@ -43,7 +44,9 @@ gemini_client = genai.Client(
 )
 
 # Semaphore to limit concurrent API calls to 100
-API_SEMAPHORE = asyncio.Semaphore(int(os.environ["MAX_CONCURRENCY"]))
+API_SEMAPHORE = MonitoredSemaphore(
+    int(os.environ["MAX_CONCURRENCY"]), name="API_SEMAPHORE"
+)
 
 
 async def get_next_structure(

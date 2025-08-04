@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 # Import logging_config first to apply patches
 import src.logging_config  # noqa: F401
+from src.async_utils.semaphore_monitor import MonitoredSemaphore
 from src.llms.messages import (
     get_next_message_anthropic,
     get_next_message_deepseek,
@@ -443,7 +444,9 @@ async def run(
     max_challenges_in_parallel: int,
 ) -> None:
     # Create a semaphore to limit parallel execution
-    semaphore = asyncio.Semaphore(max_challenges_in_parallel)
+    semaphore = MonitoredSemaphore(
+        max_challenges_in_parallel, name="challenge_semaphore"
+    )
 
     async def solve_with_semaphore(challenge_id: str) -> None:
         async with semaphore:
