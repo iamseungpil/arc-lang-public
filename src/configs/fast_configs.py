@@ -1,6 +1,6 @@
 from src.configs.models import Model, RunConfig, Step, StepRevision, StepRevisionPool
 
-model = Model.grok_3_mini_fast
+model = Model.gpt_4_1_mini
 
 mini_config_big = RunConfig(
     final_follow_model=model,
@@ -72,19 +72,19 @@ mini_config_big = RunConfig(
 
 mini_config = RunConfig(
     final_follow_model=model,
-    final_follow_times=10,
+    final_follow_times=3,
     max_concurrent_tasks=2,
     steps=[
         Step(
             instruction_model=model,
             follow_model=model,
-            times=5,
+            times=3,
             timeout_secs=300,
             include_base64=False,
             use_diffs=True,
         ),
         StepRevision(
-            top_scores_used=5,
+            top_scores_used=3,
             instruction_model=model,
             follow_model=model,
             times_per_top_score=1,
@@ -93,7 +93,7 @@ mini_config = RunConfig(
             use_diffs=True,
         ),
         StepRevisionPool(
-            top_scores_used=5,
+            top_scores_used=3,
             instruction_model=model,
             follow_model=model,
             times=1,

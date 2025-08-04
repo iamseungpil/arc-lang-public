@@ -982,6 +982,7 @@ async def run() -> None:
         / f"arc-prize-{year}"
         / f"arc-agi_{train_or_eval}_solutions.json"
     )
+    # solutions_path = None
 
     attempts_path = (
         root_dir
@@ -1005,21 +1006,11 @@ async def run() -> None:
         offset=0,
     )
 
+    if solutions_path:
+        evaluate_solutions(
+            attempts_solutions_path=attempts_path, truth_solutions_path=solutions_path
+        )
+
 
 if __name__ == "__main__":
     asyncio.run(run())
-
-    # year = "2025"
-    # train_or_eval = "evaluation"
-    # root_dir = Path(__file__).parent.parent
-    #
-    # evaluate_solutions(
-    #     attempts_solutions_path=root_dir
-    #     / "attempts"
-    #     / f"arc-prize-{year}"
-    #     / f"arc-agi_{train_or_eval}_attempts.json",
-    #     truth_solutions_path=root_dir
-    #     / "data"
-    #     / f"arc-prize-{year}"
-    #     / f"arc-agi_{train_or_eval}_solutions.json",
-    # )
