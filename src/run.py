@@ -295,7 +295,7 @@ async def get_example_score(
     )
     if test_example.output == grid_output:
         logfire.debug(
-            "Example output matches expected",
+            "Example output matches as expected",
             # example_index=test_example,
         )
         similarity_score = 1
@@ -829,11 +829,12 @@ async def solve_challenge(
                     logfire.debug(f"Grid {i} matches")
                     guess_scores.append(1)
                 else:
-                    logfire.debug(
-                        f"Grid {i} mismatch",
-                        expected=solution_grid,
-                        actual=answer_grid,
-                    )
+                    if os.getenv("LOG_GRIDS", "0") == "1":
+                        logfire.debug(
+                            f"Grid {i} mismatch",
+                            expected=solution_grid,
+                            actual=answer_grid,
+                        )
                     guess_scores.append(0)
 
             score = correct / total
