@@ -930,13 +930,14 @@ async def run_from_json(
     if limit:
         challenges_list = challenges_list[offset : offset + limit]
 
+    # now sort challenges by their length
+    challenges_list = sorted(challenges_list, key=lambda x: len(str(x)))
+
     if truth_solutions_path:
         root_solutions = TypeAdapter(dict[str, list[list[list[int]]]]).validate_json(
             truth_solutions_path.read_text()
         )
-        solutions_list = list(root_solutions.values())
-        if limit:
-            solutions_list = solutions_list[offset : offset + limit]
+        solutions_list = [root_solutions[c.task_id] for c in challenges_list]
     else:
         solutions_list = None
 
