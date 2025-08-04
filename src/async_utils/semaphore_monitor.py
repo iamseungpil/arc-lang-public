@@ -7,7 +7,7 @@ import logfire
 class MonitoredSemaphore:
     """Wrapper around asyncio.Semaphore that tracks active requests."""
 
-    def __init__(self, value: int, name: str = ""):
+    def __init__(self, value: int, name: str):
         self._semaphore = asyncio.Semaphore(value)
         self._max_value = value
         self._name = name
