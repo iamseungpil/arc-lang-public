@@ -663,78 +663,93 @@ async def get_answer_grids(*, c: Challenge, config: RunConfig) -> tuple[Guess, G
     instruction_scores: list[InstructionsScore] = []
     prev_step: Step = config.steps[0]
     for step in config.steps:
-        if isinstance(step, Step):
-            instruction_scores.extend(await get_instruction_scores(c=c, step=step))
-        else:
-            futures = []
-            if isinstance(step, StepRevision):
-                for score in instruction_scores[0 : step.top_scores_used]:
-                    for _ in range(step.times_per_top_score):
-                        futures.append(score.get_revised_instructions(c=c, step=step))
-            elif isinstance(step, StepRevisionPool):
-                for _ in range(step.times):
-                    if instruction_scores:
-                        futures.append(
-                            get_pooling_instruction_from_scores(
-                                c=c,
-                                scores=instruction_scores[0 : step.top_scores_used],
-                                step=step,
-                            )
-                        )
-                    else:
-                        logfire.error("Cannot do pooling with no instruction scores")
+        with logfire.span("step starting", task_id=c.task_id, step=step):
+            if isinstance(step, Step):
+                instruction_scores.extend(await get_instruction_scores(c=c, step=step))
             else:
-                raise Exception(f"invalid step: {step}")
+                futures = []
+                if isinstance(step, StepRevision):
+                    for score in instruction_scores[0 : step.top_scores_used]:
+                        for _ in range(step.times_per_top_score):
+                            futures.append(
+                                score.get_revised_instructions(c=c, step=step)
+                            )
+                elif isinstance(step, StepRevisionPool):
+                    for _ in range(step.times):
+                        if instruction_scores:
+                            futures.append(
+                                get_pooling_instruction_from_scores(
+                                    c=c,
+                                    scores=instruction_scores[0 : step.top_scores_used],
+                                    step=step,
+                                )
+                            )
+                        else:
+                            logfire.error(
+                                "Cannot do pooling with no instruction scores"
+                            )
+                else:
+                    raise Exception(f"invalid step: {step}")
 
-            revised_instructions: list[str] = await asyncio.gather(
-                *futures, return_exceptions=True
-            )
-            revised_instructions = filter_out_exceptions(
-                lst=revised_instructions,
-                description="Exception in get_answer_grids (revised instructions)",
-            )
-            futures = []
-            for revised_instruction in revised_instructions:
-                logfire.debug("Revised instruction", instruction=revised_instruction)
-                futures.append(
-                    get_score_from_instructions(
-                        c=c, instructions=revised_instruction, step=step
+                revised_instructions: list[str] = await asyncio.gather(
+                    *futures, return_exceptions=True
+                )
+                revised_instructions = filter_out_exceptions(
+                    lst=revised_instructions,
+                    description="Exception in get_answer_grids (revised instructions)",
+                )
+                futures = []
+                for revised_instruction in revised_instructions:
+                    logfire.debug(
+                        "Revised instruction", instruction=revised_instruction
                     )
-                )
-            new_instruction_scores: list[InstructionsScore] = list(
-                await asyncio.gather(*futures, return_exceptions=True)
-            )
-            if new_instruction_scores:
-                new_instruction_scores = filter_out_exceptions(
-                    lst=new_instruction_scores,
-                    description="Exception in get_answer_grids (new instruction scores)",
-                )
-                logfire.debug(
-                    "Revised scores",
-                    scores=[s.score for s in new_instruction_scores],
+                    futures.append(
+                        get_score_from_instructions(
+                            c=c, instructions=revised_instruction, step=step
+                        )
+                    )
+                new_instruction_scores: list[InstructionsScore] = list(
+                    await asyncio.gather(*futures, return_exceptions=True)
                 )
                 if new_instruction_scores:
-                    top_revised_score = max([s.score for s in new_instruction_scores])
-                    if instruction_scores:
-                        logfire.info(
-                            "Revision improvement",
-                            from_score=instruction_scores[0].score,
-                            to_score=top_revised_score,
-                            improvement=top_revised_score - instruction_scores[0].score,
+                    new_instruction_scores = filter_out_exceptions(
+                        lst=new_instruction_scores,
+                        description="Exception in get_answer_grids (new instruction scores)",
+                    )
+                    logfire.debug(
+                        "Revised scores",
+                        scores=[s.score for s in new_instruction_scores],
+                    )
+                    if new_instruction_scores:
+                        top_revised_score = max(
+                            [s.score for s in new_instruction_scores]
                         )
-                    instruction_scores = [*new_instruction_scores, *instruction_scores]
+                        if instruction_scores:
+                            logfire.info(
+                                "Revision improvement",
+                                from_score=instruction_scores[0].score,
+                                to_score=top_revised_score,
+                                improvement=top_revised_score
+                                - instruction_scores[0].score,
+                            )
+                        instruction_scores = [
+                            *new_instruction_scores,
+                            *instruction_scores,
+                        ]
 
-        instruction_scores: list[InstructionsScore] = sorted(
-            instruction_scores, key=lambda x: x.score, reverse=True
-        )
-        logfire.debug("Current scores", scores=[s.score for s in instruction_scores])
-        if instruction_scores and instruction_scores[0].score == 1:
-            return await return_answer(
-                c=c,
-                scores=instruction_scores,
-                config=config,
-                step=prev_step,
+            instruction_scores: list[InstructionsScore] = sorted(
+                instruction_scores, key=lambda x: x.score, reverse=True
             )
+            logfire.debug(
+                "Current scores", scores=[s.score for s in instruction_scores]
+            )
+            if instruction_scores and instruction_scores[0].score == 1:
+                return await return_answer(
+                    c=c,
+                    scores=instruction_scores,
+                    config=config,
+                    step=prev_step,
+                )
 
     # TODO here we do GREG's induction but for now just do the bets score
     if instruction_scores:
@@ -999,10 +1014,10 @@ async def run() -> None:
     await run_from_json(
         challenges_path=challenges_path,
         truth_solutions_path=solutions_path,
-        config=grok_config_prod,
+        config=mini_config,
         attempts_path=attempts_path,
         temp_attempts_dir=temp_attempts_path,
-        limit=5,
+        limit=2,
         offset=0,
     )
 
