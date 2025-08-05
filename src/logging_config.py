@@ -15,6 +15,15 @@ load_dotenv()
 logging.getLogger("opentelemetry.sdk.trace.export").setLevel(logging.ERROR)
 logging.getLogger("opentelemetry.exporter.otlp").setLevel(logging.ERROR)
 
+
+def scrubbing_callback(m: logfire.ScrubMatch):
+    if (
+        m.path == ("attributes", "error_message")
+        and m.pattern_match.group(0) == "API key"
+    ):
+        return m.value
+
+
 # Initialize Logfire with the API key from env
 logfire.configure(
     token=os.environ.get(
@@ -25,7 +34,8 @@ logfire.configure(
     ),
     service_name="arc-lang",
     send_to_logfire=True,
-    console=False,  # Disable console logging
+    console=False,  # Disable console logging,
+    scrubbing=logfire.ScrubbingOptions(callback=scrubbing_callback),
 )
 
 # Context variables for tracking IDs
