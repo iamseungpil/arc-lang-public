@@ -66,6 +66,7 @@ def retry_with_backoff(
                         or "RESOURCE_EXHAUSTED" in msg.upper()
                         or "StatusCode.UNAVAILABLE" in msg
                         or "StatusCode.RESOURCE_EXHAUSTED" in msg
+                        or "UNKNOWN" in msg
                     )
 
                     if not retryable or attempt > max_retries:
