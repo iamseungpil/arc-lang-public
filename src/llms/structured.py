@@ -23,92 +23,80 @@ from src.utils import random_str
 BMType = T.TypeVar("BMType", bound=BaseModel)
 
 
-def retry_with_backoff(max_retries: int):
+P = T.ParamSpec("P")
+R = T.TypeVar("R")
+
+
+def retry_with_backoff(
+    max_retries: int,
+    base_delay: float = 3,
+    max_delay: float = 120,
+) -> T.Callable[[T.Callable[P, T.Awaitable[R]]], T.Callable[P, T.Awaitable[R]]]:
     """
-    Decorator that retries a function on UNAVAILABLE and RESOURCE_EXHAUSTED errors
-    with exponential backoff and logfire logging.
+    Decorator for *async* functions that retries transient “UNAVAILABLE /
+    RESOURCE_EXHAUSTED”-style errors with exponential back-off.
 
-    Args:
-        max_retries: Maximum number of retry attempts (default: 5)
+    • Executes up to `max_retries + 1` total attempts (first try + N retries).
+    • Full-jitter back-off — waits a random time in `[0, base_delay × 2**(n-1)]`.
+    • Classifies retryability with simple string matching for readability.
     """
 
-    def decorator(
-        func: T.Callable[..., T.Awaitable[T.Any]],
-    ) -> T.Callable[..., T.Awaitable[T.Any]]:
-        @functools.wraps(func)
-        async def wrapper(*args, **kwargs) -> T.Any:
-            attempt = 0
-            backoff = 3.0  # Initial backoff in seconds
-            max_backoff = 240.0  # Maximum backoff in seconds
-
-            while attempt <= max_retries:
-                start_time = time.time()
-
+    def decorator(fn: T.Callable[P, T.Awaitable[R]]) -> T.Callable[P, T.Awaitable[R]]:
+        @functools.wraps(fn)
+        async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+            for attempt in range(1, max_retries + 2):  # 1-based
+                start = time.time()
                 try:
-                    # Try to execute the function
-                    result = await func(*args, **kwargs)
-
-                    # Log successful execution after retries
-                    if attempt > 0:
-                        duration = time.time() - start_time
-                        logfire.info(
-                            f"retry_succeeded after attempt {attempt}",
-                            function=func.__name__,
-                            attempt=attempt,
-                            duration_seconds=duration,
+                    res = await fn(*args, **kwargs)
+                    if attempt > 1:
+                        logfire.debug(
+                            "retry_succeeded!", function=fn.__name__, attempt=attempt
                         )
+                    return res
+                except asyncio.CancelledError:  # never retry cancellations
+                    raise
 
-                    return result
+                except Exception as exc:  # noqa: BLE001
+                    duration = time.time() - start
+                    msg = str(exc)
 
-                except Exception as e:
-                    duration = time.time() - start_time
-                    error_message = str(e)
-
-                    # Check if this is a retryable error
-
-                    is_retryable = (
-                        "UNAVAILABLE" in error_message.upper()
-                        or "RESOURCE_EXHAUSTED" in error_message.upper()
-                        or "StatusCode.UNAVAILABLE" in error_message
-                        or "StatusCode.RESOURCE_EXHAUSTED" in error_message
+                    # ---- simple, readable retry classification ----
+                    retryable = (
+                        "UNAVAILABLE" in msg.upper()
+                        or "RESOURCE_EXHAUSTED" in msg.upper()
+                        or "StatusCode.UNAVAILABLE" in msg
+                        or "StatusCode.RESOURCE_EXHAUSTED" in msg
                     )
 
-                    if not is_retryable or attempt >= max_retries:
-                        # Log final failure
+                    if not retryable or attempt > max_retries:
                         logfire.error(
-                            f"retry_failed: {error_message}",
-                            function=func.__name__,
-                            error=error_message,
-                            error_type=type(e).__name__,
-                            attempt=attempt + 1,
+                            f"retry_failed: {msg}",
+                            function=fn.__name__,
+                            attempt=attempt,
                             duration_seconds=duration,
-                            is_retryable=is_retryable,
-                            max_retries_reached=attempt >= max_retries,
+                            error=msg,
+                            error_type=type(exc).__name__,
+                            max_retries_reached=(attempt > max_retries),
                         )
                         raise
 
-                    # Calculate backoff time
-                    wait_time = min(backoff * (2**attempt), max_backoff)
+                    # ---- full-jitter exponential back-off ----
+                    base_wait = min(base_delay * 2 ** (attempt - 1), max_delay)
+                    wait = random.uniform(0, base_wait)
 
-                    # Log retry attempt
                     logfire.warn(
-                        f"retry_attempt: {error_message}",
-                        function=func.__name__,
-                        error=error_message,
-                        error_type=type(e).__name__,
-                        attempt=attempt + 1,
-                        max_retries=max_retries,
+                        f"retry_attempt: {msg}",
+                        function=fn.__name__,
+                        attempt=attempt,
                         duration_seconds=duration,
-                        wait_seconds=wait_time,
-                        next_attempt_in=wait_time,
+                        wait_seconds=wait,
+                        error=msg,
+                        error_type=type(exc).__name__,
                     )
+                    await asyncio.sleep(wait)
 
-                    # Wait before retrying
-                    await asyncio.sleep(wait_time)
-                    attempt += 1
-
-            # This should never be reached due to the raise in the except block
-            raise Exception(f"Max retries ({max_retries}) exceeded")
+            # should never reach here
+            raise RuntimeError("retry_with_backoff: fell through unexpectedly")
 
         return wrapper
 
@@ -414,7 +402,6 @@ async def _get_next_structure_xai(
             ]
         }
     )
-
     api_keys = os.environ["XAI_API_KEY"].split(",")
     xai_client = XaiAsyncClient(
         api_key=random.choice(api_keys),
@@ -781,8 +768,6 @@ async def main_test() -> None:
 
 
 if __name__ == "__main__":
-    import asyncio
-
     from dotenv import load_dotenv
 
     load_dotenv()
