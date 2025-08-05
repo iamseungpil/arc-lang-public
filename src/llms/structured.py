@@ -1,5 +1,6 @@
 import asyncio
 import copy
+import functools
 import json
 import os
 import random
@@ -20,6 +21,99 @@ from src.llms.models import Model
 from src.utils import random_str
 
 BMType = T.TypeVar("BMType", bound=BaseModel)
+
+
+def retry_with_backoff(max_retries: int):
+    """
+    Decorator that retries a function on UNAVAILABLE and RESOURCE_EXHAUSTED errors
+    with exponential backoff and logfire logging.
+
+    Args:
+        max_retries: Maximum number of retry attempts (default: 5)
+    """
+
+    def decorator(
+        func: T.Callable[..., T.Awaitable[T.Any]],
+    ) -> T.Callable[..., T.Awaitable[T.Any]]:
+        @functools.wraps(func)
+        async def wrapper(*args, **kwargs) -> T.Any:
+            attempt = 0
+            backoff = 3.0  # Initial backoff in seconds
+            max_backoff = 240.0  # Maximum backoff in seconds
+
+            while attempt <= max_retries:
+                start_time = time.time()
+
+                try:
+                    # Try to execute the function
+                    result = await func(*args, **kwargs)
+
+                    # Log successful execution after retries
+                    if attempt > 0:
+                        duration = time.time() - start_time
+                        logfire.info(
+                            f"retry_succeeded after attempt {attempt}",
+                            function=func.__name__,
+                            attempt=attempt,
+                            duration_seconds=duration,
+                        )
+
+                    return result
+
+                except Exception as e:
+                    duration = time.time() - start_time
+                    error_message = str(e)
+
+                    # Check if this is a retryable error
+
+                    is_retryable = (
+                        "UNAVAILABLE" in error_message.upper()
+                        or "RESOURCE_EXHAUSTED" in error_message.upper()
+                        or "StatusCode.UNAVAILABLE" in error_message
+                        or "StatusCode.RESOURCE_EXHAUSTED" in error_message
+                    )
+
+                    if not is_retryable or attempt >= max_retries:
+                        # Log final failure
+                        logfire.error(
+                            f"retry_failed: {error_message}",
+                            function=func.__name__,
+                            error=error_message,
+                            error_type=type(e).__name__,
+                            attempt=attempt + 1,
+                            duration_seconds=duration,
+                            is_retryable=is_retryable,
+                            max_retries_reached=attempt >= max_retries,
+                        )
+                        raise
+
+                    # Calculate backoff time
+                    wait_time = min(backoff * (2**attempt), max_backoff)
+
+                    # Log retry attempt
+                    logfire.warn(
+                        f"retry_attempt: {error_message}",
+                        function=func.__name__,
+                        error=error_message,
+                        error_type=type(e).__name__,
+                        attempt=attempt + 1,
+                        max_retries=max_retries,
+                        duration_seconds=duration,
+                        wait_seconds=wait_time,
+                        next_attempt_in=wait_time,
+                    )
+
+                    # Wait before retrying
+                    await asyncio.sleep(wait_time)
+                    attempt += 1
+
+            # This should never be reached due to the raise in the except block
+            raise Exception(f"Max retries ({max_retries}) exceeded")
+
+        return wrapper
+
+    return decorator
+
 
 openai_client = AsyncOpenAI(
     api_key=os.environ["OPENAI_API_KEY"], timeout=3600, max_retries=2
@@ -290,6 +384,7 @@ class GrokUsage(BaseModel):
         )
 
 
+@retry_with_backoff(max_retries=10)
 async def _get_next_structure_xai(
     structure: type[BMType],  # type[T]
     model: Model,
@@ -298,6 +393,7 @@ async def _get_next_structure_xai(
     messages = update_messages_xai(messages=messages)
 
     # Configure retry policy for rate limiting
+    # use decorator from now on
     custom_retry_policy = json.dumps(
         {
             "methodConfig": [
@@ -320,11 +416,12 @@ async def _get_next_structure_xai(
     )
 
     api_keys = os.environ["XAI_API_KEY"].split(",")
-
     xai_client = XaiAsyncClient(
         api_key=random.choice(api_keys),
         timeout=2_000,
-        channel_options=[("grpc.service_config", custom_retry_policy)],
+        channel_options=[
+            # ("grpc.service_config", custom_retry_policy),
+        ],
     )
     chat = xai_client.chat.create(
         model=model.value,
