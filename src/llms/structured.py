@@ -67,6 +67,8 @@ def retry_with_backoff(
                         or "StatusCode.UNAVAILABLE" in msg
                         or "StatusCode.RESOURCE_EXHAUSTED" in msg
                         or "StatusCode.UNKNOWN" in msg
+                        or "Empty response from OpenRouter model" in msg
+                        or "validation error" in msg
                     )
                     if "StatusCode.DEADLINE_EXCEEDED" in msg:
                         retryable = False
@@ -200,6 +202,7 @@ async def get_next_structure(
                 Model.openrouter_kimi_k2,
                 Model.openrouter_grok_4,
                 Model.openrouter_horizon_alpha,
+                Model.openrouter_gpt_oss_120b,
             ]:
                 res = await _get_next_structure_openrouter(
                     structure=structure, model=model, messages=messages
@@ -513,38 +516,37 @@ async def _get_next_structure_deepseek(
 
 
 def update_messages_openrouter(
-    messages: list[dict], structure: type[BMType]
+    messages: list[dict], structure: type[BMType] = None, use_json_object: bool = False
 ) -> list[dict]:
+    """Convert messages to OpenRouter format, optionally with schema instructions for json_object mode."""
     messages = copy.deepcopy(messages)
-    schema = structure.model_json_schema()
-
-    # Convert messages to simple format expected by OpenRouter
     final_messages = []
 
-    # Add system message with JSON instructions
-    system_content = f"""You are a helpful assistant that outputs structured JSON data.
+    # If using json_object mode (not json_schema), we need to add instructions
+    if use_json_object and structure:
+        schema = structure.model_json_schema()
+        system_content = f"""You are a helpful assistant that outputs structured JSON data.
 Always output valid JSON that strictly follows this schema:
 {schema}
 
 IMPORTANT: Give the output in a valid JSON string (it should not be wrapped in markdown, just plain json object)."""
-
-    final_messages.append({"role": "system", "content": system_content})
+        final_messages.append({"role": "system", "content": system_content})
 
     for message in messages:
-        if message["role"] == "system":
-            # Append to our system message
-            final_messages[0]["content"] += f"\n\n{message.get('content', '')}"
+        if isinstance(message["content"], list):
+            # Handle structured content format
+            text_parts = []
+            for c in message["content"]:
+                if c["type"] in ["input_text", "output_text", "text"]:
+                    text_parts.append(c.get("text", c.get("content", "")))
+            content = " ".join(text_parts)
         else:
-            if isinstance(message["content"], list):
-                # Handle structured content format
-                text_parts = []
-                for c in message["content"]:
-                    if c["type"] in ["input_text", "output_text", "text"]:
-                        text_parts.append(c.get("text", c.get("content", "")))
-                content = " ".join(text_parts)
-            else:
-                content = message["content"]
+            content = message["content"]
 
+        # If we added a system message for json_object mode, append to it
+        if use_json_object and structure and message["role"] == "system":
+            final_messages[0]["content"] += f"\n\n{content}"
+        else:
             final_messages.append({"role": message["role"], "content": content})
 
     return final_messages
@@ -579,6 +581,7 @@ def update_messages_gemini(messages: list[dict]) -> str:
     return "\n\n".join(parts)
 
 
+@retry_with_backoff(max_retries=5)
 async def _get_next_structure_openrouter(
     structure: type[BMType],  # type[T]
     model: Model,
@@ -586,17 +589,41 @@ async def _get_next_structure_openrouter(
 ) -> BMType:
     import json
 
-    messages = update_messages_openrouter(messages=messages, structure=structure)
+    # Check if we need to use json_object mode
+    use_json_object = False
+    if model in [Model.openrouter_qwen_235b_thinking, Model.openrouter_gpt_oss_120b]:
+        use_json_object = True
 
-    response_format = {"type": "json_object"}
+    messages = update_messages_openrouter(
+        messages=messages,
+        structure=structure if use_json_object else None,
+        use_json_object=use_json_object,
+    )
+
+    # Get the JSON schema for the structure
+    schema = structure.model_json_schema()
+
+    # Ensure additionalProperties is set to false for strict validation
+    if "additionalProperties" not in schema:
+        schema["additionalProperties"] = False
+
+    # Default to using json_schema format for structured outputs
+    response_format = {
+        "type": "json_schema",
+        "json_schema": {"name": structure.__name__, "strict": True, "schema": schema},
+    }
+
     extra_body = {}
+
+    # Special cases for certain models
     if model in [Model.openrouter_qwen_235b_thinking]:
-        response_format = None
+        # This model might not support structured outputs
+        response_format = {"type": "json_object"}
         extra_body["provider"] = {
             "order": ["Novita"],
             "allow_fallbacks": True,
         }
-    if model in [
+    elif model in [
         Model.openrouter_qwen_235b,
         # Model.openrouter_qwen_235b_thinking,
     ]:
@@ -604,10 +631,24 @@ async def _get_next_structure_openrouter(
             "only": ["cerebras"],
             # "allow_fallbacks": True,
         }
+    elif model == Model.openrouter_gpt_oss_120b:
+        # Groq doesn't support json_schema, only json_object
+        response_format = {"type": "json_object"}
+        # Sort providers by throughput for maximum speed
+        extra_body["provider"] = {
+            # "sort": "throughput",
+            "allow_fallbacks": False,
+            "only": ["Cerebras", "Groq"],
+        }
+    else:
+        # Default: sort by throughput for all other OpenRouter models
+        extra_body["provider"] = {
+            "sort": "throughput",
+            "allow_fallbacks": True,
+        }
     # if model in [Model.openrouter_glm]:
     #     extra_body["reasoning"]["enabled"] = True
 
-    # Use JSON mode if supported by the model
     response = await openrouter_client.chat.completions.create(
         model=model.value,
         messages=messages,
@@ -621,6 +662,7 @@ async def _get_next_structure_openrouter(
     # Parse the JSON response
     content = response.choices[0].message.content
     if not content:
+        # debug(response)
         raise Exception("Empty response from OpenRouter model")
 
     try:
@@ -705,10 +747,10 @@ async def main_test() -> None:
     )
     debug(response)
     """
-    # test next structure general
-    response = await get_next_structure(
+    # test groq with structured outputs
+    response = await _get_next_structure_openrouter(
         structure=Reasoning,
-        model=Model.grok_4,
+        model=Model.openrouter_gpt_oss_120b,
         messages=[
             {
                 "role": "user",
@@ -727,34 +769,6 @@ async def main_test() -> None:
     )
     debug(response)
 
-    # test deepseek
-    # response = await get_next_structure(
-    #     structure=Reasoning,
-    #     model=Model.deepseek_chat,
-    #     messages=[
-    #         {
-    #             "role": "system",
-    #             "content": "you are a math solving pirate. always talk like a pirate.",
-    #         },
-    #         {"role": "user", "content": "what is 39 * 28937?"},
-    #     ],
-    # )
-    # debug(response)
-
-    # test openrouter
-    # response = await get_next_structure(
-    #     structure=Reasoning,
-    #     model=Model.openrouter_qwen_235b,
-    #     messages=[
-    #         {
-    #             "role": "system",
-    #             "content": "you are a math solving pirate. always talk like a pirate.",
-    #         },
-    #         {"role": "user", "content": "what is 39 * 28937?"},
-    #     ],
-    # )
-    # debug(response)
-
     # test gemini
     # response = await get_next_structure(
     #     structure=Reasoning,
@@ -771,7 +785,4 @@ async def main_test() -> None:
 
 
 if __name__ == "__main__":
-    from dotenv import load_dotenv
-
-    load_dotenv()
     asyncio.run(main_test())
