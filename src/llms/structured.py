@@ -66,8 +66,10 @@ def retry_with_backoff(
                         or "RESOURCE_EXHAUSTED" in msg.upper()
                         or "StatusCode.UNAVAILABLE" in msg
                         or "StatusCode.RESOURCE_EXHAUSTED" in msg
-                        or "UNKNOWN" in msg
+                        or "StatusCode.UNKNOWN" in msg
                     )
+                    if "StatusCode.DEADLINE_EXCEEDED" in msg:
+                        retryable = False
 
                     if not retryable or attempt > max_retries:
                         logfire.error(
