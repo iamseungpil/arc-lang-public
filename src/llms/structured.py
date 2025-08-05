@@ -70,7 +70,7 @@ def retry_with_backoff(
 
                     if not retryable or attempt > max_retries:
                         logfire.error(
-                            f"retry_failed: {msg}",
+                            "retry_failed",
                             function=fn.__name__,
                             attempt=attempt,
                             duration_seconds=duration,
@@ -85,7 +85,7 @@ def retry_with_backoff(
                     wait = random.uniform(0, base_wait)
 
                     logfire.warn(
-                        f"retry_attempt: {msg}",
+                        "retry_attempt",
                         function=fn.__name__,
                         attempt=attempt,
                         duration_seconds=duration,
