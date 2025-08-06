@@ -69,6 +69,7 @@ def retry_with_backoff(
                         or "StatusCode.UNKNOWN" in msg
                         or "Empty response from OpenRouter model" in msg
                         or "validation error" in msg
+                        or "SAFETY_CHECK_TYPE_BIO" in msg
                     )
                     if "StatusCode.DEADLINE_EXCEEDED" in msg:
                         retryable = False
