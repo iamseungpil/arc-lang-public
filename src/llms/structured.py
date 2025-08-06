@@ -73,7 +73,7 @@ def retry_with_backoff(
                     )
                     if "StatusCode.DEADLINE_EXCEEDED" in msg:
                         retryable = False
-                    if "StatusCode.UNAVAILABLE" in msg and duration > 600:
+                    if duration > 1_000:
                         retryable = False
 
                     if not retryable or attempt > max_retries:
@@ -414,7 +414,7 @@ async def _get_next_structure_xai(
     api_keys = os.environ["XAI_API_KEY"].split(",")
     xai_client = XaiAsyncClient(
         api_key=random.choice(api_keys),
-        timeout=2_500,
+        timeout=3_000,
         channel_options=[
             # ("grpc.service_config", custom_retry_policy),
         ],

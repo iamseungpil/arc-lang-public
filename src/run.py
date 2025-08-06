@@ -1027,7 +1027,7 @@ async def run() -> None:
         temp_attempts_dir=temp_attempts_path,
         limit=120,
         offset=0,
-        task_ids={"b0039139"},
+        task_ids={"b0039139", "20270e3b"},
     )
 
     if solutions_path:
