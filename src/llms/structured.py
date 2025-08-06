@@ -416,7 +416,7 @@ async def _get_next_structure_xai(
     api_keys = os.environ["XAI_API_KEY"].split(",")
     xai_client = XaiAsyncClient(
         api_key=random.choice(api_keys),
-        timeout=3_000,
+        timeout=3_500,
         channel_options=[
             # ("grpc.service_config", custom_retry_policy),
         ],
