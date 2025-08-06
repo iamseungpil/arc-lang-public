@@ -73,6 +73,8 @@ def retry_with_backoff(
                     )
                     if "StatusCode.DEADLINE_EXCEEDED" in msg:
                         retryable = False
+                    if "StatusCode.UNAVAILABLE" in msg and duration > 600:
+                        retryable = False
 
                     if not retryable or attempt > max_retries:
                         logfire.error(

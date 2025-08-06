@@ -932,6 +932,7 @@ async def run_from_json(
     truth_solutions_path: Path,
     limit: int | None,
     offset: int = 0,
+    task_ids: set[str] | None = None,
 ) -> None:
     global SOLUTIONS_D
     SOLUTIONS_D = {}
@@ -946,6 +947,8 @@ async def run_from_json(
         k: Challenge.model_validate({**v, "task_id": k})
         for k, v in raw_challenges.items()
     }
+    if task_ids:
+        root_challenges = {k: v for k, v in root_challenges.items() if k in task_ids}
     challenges_list = list(root_challenges.values())
     if limit:
         challenges_list = challenges_list[offset : offset + limit]
@@ -1024,6 +1027,7 @@ async def run() -> None:
         temp_attempts_dir=temp_attempts_path,
         limit=120,
         offset=0,
+        task_ids={"b0039139"},
     )
 
     if solutions_path:
