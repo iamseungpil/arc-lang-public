@@ -880,10 +880,13 @@ async def solve_challenges(
     semaphore = MonitoredSemaphore(config.max_concurrent_tasks, name="run_semaphore")
 
     async def solve_with_semaphore(
+        *,
         challenge: Challenge,
         solution_grids: list[GRID] | None,
+        sleep_for: int,
     ) -> float:
         async with semaphore:
+            await asyncio.sleep(sleep_for)
             return await solve_challenge(
                 c=challenge,
                 solution_grids=solution_grids,
@@ -895,11 +898,12 @@ async def solve_challenges(
     futures = []
     if solution_grids_list is None:
         solution_grids_list = [None for _ in range(len(challenges))]
-    for challenge, solution_grids in zip(challenges, solution_grids_list, strict=True):
+    for i, (challenge, solution_grids) in enumerate(
+        zip(challenges, solution_grids_list, strict=True)
+    ):
         futures.append(
             solve_with_semaphore(
-                challenge=challenge,
-                solution_grids=solution_grids,
+                challenge=challenge, solution_grids=solution_grids, sleep_for=i * 5
             )
         )
     scores: list[float] = await asyncio.gather(*futures, return_exceptions=True)
@@ -1018,7 +1022,7 @@ async def run() -> None:
         config=grok_config_prod,
         attempts_path=attempts_path,
         temp_attempts_dir=temp_attempts_path,
-        limit=1000,
+        limit=120,
         offset=0,
     )
 

@@ -379,7 +379,7 @@ class GrokUsage(BaseModel):
         )
 
 
-@retry_with_backoff(max_retries=10)
+@retry_with_backoff(max_retries=20)
 async def _get_next_structure_xai(
     structure: type[BMType],  # type[T]
     model: Model,
