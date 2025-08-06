@@ -412,7 +412,7 @@ async def _get_next_structure_xai(
     api_keys = os.environ["XAI_API_KEY"].split(",")
     xai_client = XaiAsyncClient(
         api_key=random.choice(api_keys),
-        timeout=2_120,
+        timeout=2_500,
         channel_options=[
             # ("grpc.service_config", custom_retry_policy),
         ],
@@ -582,7 +582,7 @@ def update_messages_gemini(messages: list[dict]) -> str:
     return "\n\n".join(parts)
 
 
-@retry_with_backoff(max_retries=5)
+@retry_with_backoff(max_retries=20)
 async def _get_next_structure_openrouter(
     structure: type[BMType],  # type[T]
     model: Model,

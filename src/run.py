@@ -1018,8 +1018,8 @@ async def run() -> None:
         config=grok_config_prod,
         attempts_path=attempts_path,
         temp_attempts_dir=temp_attempts_path,
-        limit=100,
-        offset=60,
+        limit=1000,
+        offset=0,
     )
 
     if solutions_path:
