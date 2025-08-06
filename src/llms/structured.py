@@ -75,6 +75,8 @@ def retry_with_backoff(
                         retryable = False
                     if duration > 1_000:
                         retryable = False
+                    if duration > 500 and attempt > 2:
+                        retryable = False
 
                     if not retryable or attempt > max_retries:
                         logfire.error(
