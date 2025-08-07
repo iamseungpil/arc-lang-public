@@ -14,6 +14,8 @@ class Model(str, Enum):
     o3_pro = "o3-pro"
     gpt_4_1 = "gpt-4.1"
     gpt_4_1_mini = "gpt-4.1-mini"
+    gpt_5 = "gpt-5"
+
     sonnet_3_7 = "claude-3-7-sonnet-latest"
     sonnet_3_5 = "claude-3-5-sonnet-latest"
     gemini_2_5 = "gemini-2.5-pro"

@@ -169,6 +169,7 @@ async def get_next_structure(
                 Model.gpt_4_1,
                 Model.gpt_4_1_mini,
                 Model.o3_pro,
+                Model.gpt_5,
             ]:
                 res = await _get_next_structure_openai(
                     structure=structure, model=model, messages=messages
@@ -240,7 +241,7 @@ async def _get_next_structure_openai(
     model: Model,
     messages: list,
 ) -> BMType:
-    if model in [Model.o3, Model.o4_mini, Model.o3_pro]:
+    if model in [Model.o3, Model.o4_mini, Model.o3_pro, Model.gpt_5]:
         reasoning = {"effort": "high"}
     else:
         reasoning = None
@@ -248,9 +249,43 @@ async def _get_next_structure_openai(
         model=model.value,
         input=messages,
         text_format=structure,
-        max_output_tokens=100_000,
+        max_output_tokens=128_000,
         reasoning=reasoning,
     )
+
+    # Build usage object
+    usage = response.usage
+
+    # Debug to see actual structure
+    # logfire.debug("raw_usage_debug", usage_type=type(usage).__name__, usage_attrs=dir(usage))
+
+    # OpenAI responses API uses different attribute names
+    openai_usage = OpenAIUsage(
+        completion_tokens=getattr(usage, "output_tokens", 0),
+        prompt_tokens=getattr(usage, "input_tokens", 0),
+        total_tokens=getattr(usage, "total_tokens", 0),
+        reasoning_tokens=getattr(
+            getattr(usage, "output_tokens_details", None), "reasoning_tokens", 0
+        )
+        if hasattr(usage, "output_tokens_details") and usage.output_tokens_details
+        else 0,
+        cached_prompt_tokens=getattr(
+            getattr(usage, "input_tokens_details", None), "cached_tokens", 0
+        )
+        if hasattr(usage, "input_tokens_details") and usage.input_tokens_details
+        else 0,
+    )
+
+    # Log usage with logfire
+    logfire.debug(
+        "openai_usage",
+        model=model.value,
+        usage=openai_usage.model_dump(),
+        cents=openai_usage.cents(model=model),
+        finish_reason=getattr(response, "finish_reason", None),
+        reasoning_content=getattr(response, "reasoning_content", None),
+    )
+
     if model in [Model.o3_pro]:
         debug(response)
     output: BMType = response.output_parsed
@@ -303,15 +338,15 @@ def update_messages_anthropic(messages: list[dict]) -> list[dict]:
     return messages
 
 
-MAX_TOKENS_ANTHROPIC_D: dict[Model:int] = {
+MAX_TOKENS_ANTHROPIC_D: dict[Model, int] = {
     Model.sonnet_4: 64_000,
     Model.opus_4: 32_000,
 }
-MAX_TOKENS_THINKING_ANTHROPIC_D: dict[Model:int] = {
+MAX_TOKENS_THINKING_ANTHROPIC_D: dict[Model, int] = {
     Model.sonnet_4: 60_000,
     Model.opus_4: 30_000,
 }
-MAX_TOKENS_DEEPSEEK_D: dict[Model:int] = {
+MAX_TOKENS_DEEPSEEK_D: dict[Model, int] = {
     Model.deepseek_chat: 8_192,
     Model.deepseek_reasoner: 32_768,
 }
@@ -363,6 +398,37 @@ MODEL_PRICING_D: dict[Model, ModelPricing] = {
         reasoning_tokens=400 / 1_000_000,
         completion_tokens=400 / 1_000_000,
     ),
+    # OpenAI pricing (per million tokens)
+    Model.o3: ModelPricing(
+        prompt_tokens=5_000 / 1_000_000,  # $5 per 1M tokens
+        reasoning_tokens=25_000 / 1_000_000,  # $25 per 1M tokens
+        completion_tokens=15_000 / 1_000_000,  # $15 per 1M tokens
+    ),
+    Model.o3_pro: ModelPricing(
+        prompt_tokens=1_5_00 / 1_000_000,  # $15 per 1M tokens
+        reasoning_tokens=6_000 / 1_000_000,  # $60 per 1M tokens
+        completion_tokens=6_000 / 1_000_000,  # $60 per 1M tokens
+    ),
+    Model.o4_mini: ModelPricing(
+        prompt_tokens=300 / 1_000_000,  # $0.30 per 1M tokens
+        reasoning_tokens=1_200 / 1_000_000,  # $1.20 per 1M tokens
+        completion_tokens=1_200 / 1_000_000,  # $1.20 per 1M tokens
+    ),
+    Model.gpt_4_1: ModelPricing(
+        prompt_tokens=250 / 1_000_000,  # $2.50 per 1M tokens
+        reasoning_tokens=1_000 / 1_000_000,  # $10 per 1M tokens
+        completion_tokens=1_000 / 1_000_000,  # $10 per 1M tokens
+    ),
+    Model.gpt_4_1_mini: ModelPricing(
+        prompt_tokens=150 / 1_000_000,  # $0.15 per 1M tokens
+        reasoning_tokens=600 / 1_000_000,  # $0.60 per 1M tokens
+        completion_tokens=600 / 1_000_000,  # $0.60 per 1M tokens
+    ),
+    Model.gpt_5: ModelPricing(
+        prompt_tokens=125 / 1_000_000,  # $10 per 1M tokens (estimate)
+        reasoning_tokens=1_000 / 1_000_000,  # $50 per 1M tokens (estimate)
+        completion_tokens=1_000 / 1_000_000,  # $30 per 1M tokens (estimate)
+    ),
 }
 
 
@@ -380,6 +446,25 @@ class GrokUsage(BaseModel):
             self.prompt_tokens * pricing.prompt_tokens
             + self.reasoning_tokens * pricing.reasoning_tokens
             + self.completion_tokens * pricing.completion_tokens
+        )
+
+
+class OpenAIUsage(BaseModel):
+    completion_tokens: int
+    prompt_tokens: int
+    total_tokens: int
+    reasoning_tokens: int = 0
+    cached_prompt_tokens: int = 0
+
+    def cents(self, model: Model) -> float:
+        if model not in MODEL_PRICING_D:
+            return 0.0
+        pricing = MODEL_PRICING_D[model]
+        return round(
+            self.prompt_tokens * pricing.prompt_tokens
+            + self.reasoning_tokens * pricing.reasoning_tokens
+            + self.completion_tokens * pricing.completion_tokens,
+            2,
         )
 
 

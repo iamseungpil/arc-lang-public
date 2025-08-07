@@ -1018,6 +1018,7 @@ async def run() -> None:
     from src.configs.grok_configs import grok_config_prod
     from src.configs.fast_configs import mini_config
     from src.configs.oss_configs import oss_config
+    from src.configs.gpt_configs import gpt_config_prod
 
     await run_from_json(
         challenges_path=challenges_path,
