@@ -13,6 +13,7 @@ from pydantic import BaseModel, TypeAdapter
 from src.async_utils.semaphore_monitor import MonitoredSemaphore
 from src.configs.models import RunConfig, Step, StepRevision, StepRevisionPool
 from src.llms.structured import get_next_structure
+from src.utils import random_str
 
 # Import logging_config first to apply patches before any logfire usage
 from src.logging_config import generate_run_id, set_task_id
@@ -663,7 +664,7 @@ async def get_answer_grids(*, c: Challenge, config: RunConfig) -> tuple[Guess, G
     instruction_scores: list[InstructionsScore] = []
     prev_step: Step = config.steps[0]
     for step in config.steps:
-        with logfire.span("step starting", task_id=c.task_id, step=step):
+        with logfire.span("step starting", step=step):
             if isinstance(step, Step):
                 instruction_scores.extend(await get_instruction_scores(c=c, step=step))
             else:
@@ -801,11 +802,16 @@ async def solve_challenge(
     solution_grids: list[GRID] | None,
     config: RunConfig,
 ) -> float:
-    set_task_id(c.task_id)
+    if os.getenv("LOG_GRIDS", "0") == "1":
+        task_id_to_use = c.task_id
+    else:
+        # totally hide task id so there is no proprietary info being sent
+        task_id_to_use = random_str(6)
+    set_task_id(task_id_to_use)
     print(f"Starting to solve challenge: {c.task_id}")  # Console output for task start
-    logfire.info("Starting challenge", task_id=c.task_id)
+    logfire.info("Starting challenge")
 
-    with logfire.span("solve_challenge", task_id=c.task_id):
+    with logfire.span("solve_challenge"):
         first_guess_obj, second_guess_obj = await get_answer_grids(c=c, config=config)
     # now write these to attempts path
 
@@ -862,7 +868,9 @@ async def solve_challenge(
                 total=total,
             )
         max_score = max(final_scores)
-        logfire.info("Challenge completed", task_id=c.task_id, final_score=max_score)
+        logfire.info(
+            "Challenge completed", task_id=task_id_to_use, final_score=max_score
+        )
         print(f"Task {c.task_id} completed!")
         return max_score
     else:
@@ -1016,7 +1024,7 @@ async def run() -> None:
     temp_attempts_path = root_dir / "attempts" / f"arc-prize-{year}" / "temp_solutions"
 
     from src.configs.grok_configs import grok_config_prod
-    from src.configs.fast_configs import mini_config
+    from src.configs.fast_configs import mini_config, mini_for_testing
     from src.configs.oss_configs import oss_config
     from src.configs.gpt_configs import gpt_config_prod
 
@@ -1026,9 +1034,9 @@ async def run() -> None:
         config=grok_config_prod,
         attempts_path=attempts_path,
         temp_attempts_dir=temp_attempts_path,
-        limit=120,
+        limit=1,
         offset=0,
-        task_ids={"b0039139", "20270e3b"},
+        # task_ids={"b0039139", "20270e3b"},
     )
 
     if solutions_path:

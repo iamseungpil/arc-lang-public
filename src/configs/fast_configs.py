@@ -103,3 +103,37 @@ mini_config = RunConfig(
         ),
     ],
 )
+
+mini_for_testing = RunConfig(
+    final_follow_model=model,
+    final_follow_times=2,
+    max_concurrent_tasks=2,
+    steps=[
+        Step(
+            instruction_model=model,
+            follow_model=model,
+            times=2,
+            timeout_secs=300,
+            include_base64=False,
+            use_diffs=True,
+        ),
+        StepRevision(
+            top_scores_used=2,
+            instruction_model=model,
+            follow_model=model,
+            times_per_top_score=1,
+            timeout_secs=300,
+            include_base64=False,
+            use_diffs=True,
+        ),
+        StepRevisionPool(
+            top_scores_used=2,
+            instruction_model=model,
+            follow_model=model,
+            times=1,
+            timeout_secs=300,
+            include_base64=False,
+            use_diffs=True,
+        ),
+    ],
+)

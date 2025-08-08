@@ -531,7 +531,9 @@ async def _get_next_structure_xai(
             usage=grok_usage,
             cents=grok_usage.cents(model=model),
             finish_reason=response.finish_reason,
-            reasoning_content=response.reasoning_content,
+            reasoning_content=response.reasoning_content
+            if os.getenv("LOG_GRIDS", "0") == "1"
+            else None,
         )
 
     except Exception as e:
