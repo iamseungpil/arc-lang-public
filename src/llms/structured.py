@@ -221,8 +221,11 @@ async def get_next_structure(
             # span.set_attribute("response", res.model_dump())
 
             response_dump = res.model_dump()
-            if "grid" in response_dump:
-                del response_dump["grid"]
+            response_keys = list(response_dump.keys())
+            if os.getenv("LOG_GRIDS", "0") == "1":
+                pass
+            else:
+                response_dump = {}
 
             logfire.debug(
                 "LLM call completed",
@@ -231,6 +234,7 @@ async def get_next_structure(
                 duration_seconds=duration,
                 request_id=res_id,
                 response=response_dump,
+                response_keys=response_keys,
             )
 
             return res
