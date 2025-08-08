@@ -796,7 +796,7 @@ async def solve_challenge(
     solution_grids: list[GRID] | None,
     config: RunConfig,
 ) -> float:
-    if os.getenv("LOG_GRIDS", "0") == "1":
+    if os.getenv("USE_TASK_ID", "0") == "1":
         task_id_to_use = c.task_id
     else:
         # totally hide task id so there is no proprietary info being sent
