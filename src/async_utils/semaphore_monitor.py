@@ -1,7 +1,7 @@
 import asyncio
 from contextlib import asynccontextmanager
 
-import logfire
+from src.log import log
 
 
 class MonitoredSemaphore:
@@ -34,7 +34,7 @@ class MonitoredSemaphore:
             f"Semaphore '{self._name}' status: {self._active_count}/{self._max_value} "
             f"active ({self.saturation_percentage:.1f}% saturated)"
         )
-        logfire.debug(message)
+        log.debug(message)
 
     @asynccontextmanager
     async def acquire_monitored(self):

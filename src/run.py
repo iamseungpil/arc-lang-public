@@ -7,7 +7,7 @@ import uuid
 from pathlib import Path
 
 import asyncpg
-import logfire
+from src.log import log
 from pydantic import BaseModel, TypeAdapter
 
 from src.async_utils.semaphore_monitor import MonitoredSemaphore
@@ -35,7 +35,7 @@ TT = T.TypeVar("TT")
 def filter_out_exceptions(lst: list[TT | Exception], description: str) -> list[TT]:
     exceptions = [instr for instr in lst if isinstance(instr, Exception)]
     for e in exceptions:
-        logfire.error(
+        log.error(
             f"{description}: {type(e).__name__}",
             error_type=type(e).__name__,
             error_message=str(e),
@@ -295,7 +295,7 @@ async def get_example_score(
         is_perfect=True,
     )
     if test_example.output == grid_output:
-        logfire.debug(
+        log.debug(
             "Example output matches as expected",
             # example_index=test_example,
         )
@@ -310,7 +310,7 @@ async def get_example_score(
         similarity_score = get_grid_similarity(
             ground_truth_grid=test_example.output, sample_grid=grid_output
         )
-        logfire.debug(
+        log.debug(
             "Grid similarity calculated",
             similarity_score=similarity_score,
             similarity_percent=f"{similarity_score * 100:.1f}%",
@@ -327,7 +327,7 @@ async def get_example_score(
 async def score_instructions_on_challenge(
     c: Challenge, instructions: str, step: Step | StepRevision | StepRevisionPool
 ) -> InstructionsScore:
-    with logfire.span("score_instructions", step_type=type(step).__name__):
+    with log.span("score_instructions", step_type=type(step).__name__):
         futures: list = []
         for i_train in range(len(c.train)):
             temp_test = c.train[i_train]
@@ -353,7 +353,7 @@ async def score_instructions_on_challenge(
             if example_scores
             else 0
         )
-        logfire.info(
+        log.info(
             "Instructions scored",
             score=score,
             example_count=len(example_scores),
@@ -383,7 +383,7 @@ async def get_score_from_instructions(
 
 
 async def get_instructions_from_challenge(c: Challenge, step: Step) -> str:
-    with logfire.span("get_instructions_from_challenge", step=step.model_dump()):
+    with log.span("get_instructions_from_challenge", step=step.model_dump()):
         messages = [
             {
                 "role": "user",
@@ -411,7 +411,7 @@ async def get_instruction_score_from_challenge(
     c: Challenge, step: Step
 ) -> InstructionsScore:
     instructions = await get_instructions_from_challenge(c=c, step=step)
-    logfire.debug("Instructions generated", instructions=instructions)
+    log.debug("Instructions generated", instructions=instructions)
     return await get_score_from_instructions(c=c, instructions=instructions, step=step)
 
 
@@ -583,14 +583,14 @@ async def get_diverse_attempts(
                 is_perfect=score_to_use.score == 1,
             )
         )
-    logfire.debug("scores to use for final grids", scores=scores_to_use)
+    log.debug("scores to use for final grids", scores=scores_to_use)
     _final_output_grids: list[GRID] = await asyncio.gather(
         *futures, return_exceptions=True
     )
     final_output_grids_and_scores: list[tuple[GRID, InstructionsScore]] = []
     for i, g in enumerate(_final_output_grids):
         if isinstance(g, Exception):
-            logfire.error(
+            log.error(
                 f"FINAL OUTPUT GRID GETTING: {type(g).__name__}",
                 error_type=type(g).__name__,
                 error_message=str(g),
@@ -611,7 +611,7 @@ async def get_diverse_attempts(
 async def return_answer(
     c: Challenge, scores: list[InstructionsScore], config: RunConfig, step: Step
 ) -> tuple[Guess, Guess]:
-    logfire.info(
+    log.info(
         "Perfect score achieved or ending, generating final answers",
         score=scores[0].score,
     )
@@ -624,12 +624,12 @@ async def return_answer(
             )
         )
 
-    logfire.debug("Generating final output grid tuples")
+    log.debug("Generating final output grid tuples")
     # this is a list of tuple grids, corresponding to the index of the test
     final_output_grids: list[
         tuple[tuple[GRID, InstructionsScore], tuple[GRID, InstructionsScore]]
     ] = await asyncio.gather(*futures)
-    logfire.debug("Final grids generated", grid_count=len(final_output_grids))
+    log.debug("Final grids generated", grid_count=len(final_output_grids))
 
     first_prediction: list[tuple[GRID, InstructionsScore]] = []
     second_prediction: list[tuple[GRID, InstructionsScore]] = []
@@ -664,7 +664,7 @@ async def get_answer_grids(*, c: Challenge, config: RunConfig) -> tuple[Guess, G
     instruction_scores: list[InstructionsScore] = []
     prev_step: Step = config.steps[0]
     for step in config.steps:
-        with logfire.span("step starting", step=step):
+        with log.span("step starting", step=step):
             if isinstance(step, Step):
                 instruction_scores.extend(await get_instruction_scores(c=c, step=step))
             else:
@@ -686,9 +686,7 @@ async def get_answer_grids(*, c: Challenge, config: RunConfig) -> tuple[Guess, G
                                 )
                             )
                         else:
-                            logfire.error(
-                                "Cannot do pooling with no instruction scores"
-                            )
+                            log.error("Cannot do pooling with no instruction scores")
                 else:
                     raise Exception(f"invalid step: {step}")
 
@@ -701,9 +699,7 @@ async def get_answer_grids(*, c: Challenge, config: RunConfig) -> tuple[Guess, G
                 )
                 futures = []
                 for revised_instruction in revised_instructions:
-                    logfire.debug(
-                        "Revised instruction", instruction=revised_instruction
-                    )
+                    log.debug("Revised instruction", instruction=revised_instruction)
                     futures.append(
                         get_score_from_instructions(
                             c=c, instructions=revised_instruction, step=step
@@ -717,7 +713,7 @@ async def get_answer_grids(*, c: Challenge, config: RunConfig) -> tuple[Guess, G
                         lst=new_instruction_scores,
                         description="Exception in get_answer_grids (new instruction scores)",
                     )
-                    logfire.debug(
+                    log.debug(
                         "Revised scores",
                         scores=[s.score for s in new_instruction_scores],
                     )
@@ -726,7 +722,7 @@ async def get_answer_grids(*, c: Challenge, config: RunConfig) -> tuple[Guess, G
                             [s.score for s in new_instruction_scores]
                         )
                         if instruction_scores:
-                            logfire.info(
+                            log.info(
                                 "Revision improvement",
                                 from_score=instruction_scores[0].score,
                                 to_score=top_revised_score,
@@ -741,9 +737,7 @@ async def get_answer_grids(*, c: Challenge, config: RunConfig) -> tuple[Guess, G
             instruction_scores: list[InstructionsScore] = sorted(
                 instruction_scores, key=lambda x: x.score, reverse=True
             )
-            logfire.debug(
-                "Current scores", scores=[s.score for s in instruction_scores]
-            )
+            log.debug("Current scores", scores=[s.score for s in instruction_scores])
             if instruction_scores and instruction_scores[0].score == 1:
                 return await return_answer(
                     c=c,
@@ -761,7 +755,7 @@ async def get_answer_grids(*, c: Challenge, config: RunConfig) -> tuple[Guess, G
             step=prev_step,
         )
     else:
-        logfire.error("No instruction scores found")
+        log.error("No instruction scores found")
         raise Exception("no scores...")
 
 
@@ -809,9 +803,9 @@ async def solve_challenge(
         task_id_to_use = random_str(6)
     set_task_id(task_id_to_use)
     print(f"Starting to solve challenge: {c.task_id}")  # Console output for task start
-    logfire.info("Starting challenge")
+    log.info("Starting challenge")
 
-    with logfire.span("solve_challenge"):
+    with log.span("solve_challenge"):
         first_guess_obj, second_guess_obj = await get_answer_grids(c=c, config=config)
     # now write these to attempts path
 
@@ -847,11 +841,11 @@ async def solve_challenge(
                 solution_grid = solution_grids[i]
                 if answer_grid == solution_grid:
                     correct += 1
-                    logfire.debug(f"Grid {i} matches")
+                    log.debug(f"Grid {i} matches")
                     guess_scores.append(1)
                 else:
                     if os.getenv("LOG_GRIDS", "0") == "1":
-                        logfire.debug(
+                        log.debug(
                             f"Grid {i} mismatch",
                             expected=solution_grid,
                             actual=answer_grid,
@@ -861,16 +855,14 @@ async def solve_challenge(
             score = correct / total
             await guess_obj.save_to_db(scores=guess_scores, avg_score=score)
             final_scores.append(score)
-            logfire.info(
+            log.info(
                 "Guess result",
                 score_percent=f"{round(score * 100)}%",
                 correct=correct,
                 total=total,
             )
         max_score = max(final_scores)
-        logfire.info(
-            "Challenge completed", task_id=task_id_to_use, final_score=max_score
-        )
+        log.info("Challenge completed", task_id=task_id_to_use, final_score=max_score)
         print(f"Task {c.task_id} completed!")
         return max_score
     else:
@@ -920,14 +912,14 @@ async def solve_challenges(
     )
     if scores:
         final_score = sum(scores) / len(scores)
-        logfire.info(
+        log.info(
             "Overall results",
             final_score_percent=f"{final_score * 100:.2f}%",
             total_score=sum(scores),
             challenge_count=len(scores),
         )
         return final_score
-    logfire.error("No scores for challenges", config=config.model_dump())
+    log.error("No scores for challenges", config=config.model_dump())
     return 0
 
 
@@ -972,8 +964,8 @@ async def run_from_json(
     else:
         solutions_list = None
 
-    with logfire.span("run_challenges", run_id=run_id):
-        logfire.info(
+    with log.span("run_challenges", run_id=run_id):
+        log.info(
             "Starting run",
             config=config.model_dump(),
             challenges_path=str(challenges_path),
@@ -989,7 +981,7 @@ async def run_from_json(
             config=config,
             temp_attempts_dir=temp_attempts_dir,
         )
-        logfire.info("Run completed", final_scores=final_scores)
+        log.info("Run completed", final_scores=final_scores)
 
 
 async def run() -> None:
@@ -1031,7 +1023,7 @@ async def run() -> None:
     await run_from_json(
         challenges_path=challenges_path,
         truth_solutions_path=solutions_path,
-        config=grok_config_prod,
+        config=mini_for_testing,
         attempts_path=attempts_path,
         temp_attempts_dir=temp_attempts_path,
         limit=1,

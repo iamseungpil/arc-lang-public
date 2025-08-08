@@ -1,4 +1,4 @@
-import logfire
+from src.log import log
 from pydantic import BaseModel, Field
 
 # Import logging_config first to apply patches
@@ -152,7 +152,7 @@ def contents_from_grid(grid: GRID, grid_label: str, include_base64: bool) -> lis
             ValueError,
             TypeError,
         ) as e:
-            logfire.error("Error generating base64 image", error=str(e))
+            log.error("Error generating base64 image", error=str(e))
             pass
 
     return contents
