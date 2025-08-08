@@ -15,6 +15,9 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
+# If set to "1", do not send logs to Logfire; only write locally
+LOCAL_LOGS_ONLY = os.environ.get("LOCAL_LOGS_ONLY", "0") == "1"
+
 # Suppress OpenTelemetry export errors
 logging.getLogger("opentelemetry.sdk.trace.export").setLevel(logging.ERROR)
 logging.getLogger("opentelemetry.exporter.otlp").setLevel(logging.ERROR)
@@ -37,7 +40,7 @@ logfire.configure(
         ).decode(),
     ),
     service_name="arc-lang",
-    send_to_logfire=True,
+    send_to_logfire=not LOCAL_LOGS_ONLY,
     console=False,  # Disable console logging,
     scrubbing=logfire.ScrubbingOptions(callback=scrubbing_callback),
 )
