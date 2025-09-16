@@ -33,12 +33,7 @@ def scrubbing_callback(m: logfire.ScrubMatch):
 
 # Initialize Logfire with the API key from env
 logfire.configure(
-    token=os.environ.get(
-        "LOGFIRE_API_KEY",
-        base64.b64decode(
-            "cHlsZl92MV91c19xMFY3ZnlCUE1NTVhLZ0JLN0M0N3BoSkp0U0ZHYjlHWFFHVlZNUFdsaFFZRg=="
-        ).decode(),
-    ),
+    token=os.environ.get("LOGFIRE_API_KEY"),
     service_name="arc-lang",
     send_to_logfire=not LOCAL_LOGS_ONLY,
     console=False,  # Disable console logging,
