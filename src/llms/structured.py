@@ -7,7 +7,6 @@ import random
 import time
 import typing as T
 
-from src.log import log
 from anthropic import AsyncAnthropic
 from devtools import debug
 from google import genai
@@ -18,6 +17,7 @@ from xai_sdk.chat import assistant, image, system, user
 
 from src.async_utils.semaphore_monitor import MonitoredSemaphore
 from src.llms.models import Model
+from src.log import log
 from src.utils import random_str
 
 BMType = T.TypeVar("BMType", bound=BaseModel)
@@ -117,7 +117,7 @@ openai_client = AsyncOpenAI(
     api_key=os.environ["OPENAI_API_KEY"], timeout=3600, max_retries=2
 )
 anthropic_client = AsyncAnthropic(
-    api_key=os.environ.get("ANTHROPIC_API_KEY"), timeout=2500, max_retries=2
+    api_key=os.environ.get("ANTHROPIC_API_KEY"), timeout=3_010, max_retries=2
 )
 deepseek_client = AsyncOpenAI(
     api_key=os.environ["DEEPSEEK_API_KEY"],
@@ -174,7 +174,7 @@ async def get_next_structure(
                 res = await _get_next_structure_openai(
                     structure=structure, model=model, messages=messages
                 )
-            elif model in [Model.sonnet_4, Model.opus_4]:
+            elif model in [Model.sonnet_4, Model.opus_4, Model.sonnet_4_5]:
                 res = await _get_next_structure_anthropic(
                     structure=structure, model=model, messages=messages
                 )
@@ -342,10 +342,12 @@ def update_messages_anthropic(messages: list[dict]) -> list[dict]:
 MAX_TOKENS_ANTHROPIC_D: dict[Model, int] = {
     Model.sonnet_4: 64_000,
     Model.opus_4: 32_000,
+    Model.sonnet_4_5: 64_000,
 }
 MAX_TOKENS_THINKING_ANTHROPIC_D: dict[Model, int] = {
     Model.sonnet_4: 60_000,
     Model.opus_4: 30_000,
+    Model.sonnet_4_5: 60_000,
 }
 MAX_TOKENS_DEEPSEEK_D: dict[Model, int] = {
     Model.deepseek_chat: 8_192,
@@ -429,6 +431,11 @@ MODEL_PRICING_D: dict[Model, ModelPricing] = {
         prompt_tokens=125 / 1_000_000,  # $10 per 1M tokens (estimate)
         reasoning_tokens=1_000 / 1_000_000,  # $50 per 1M tokens (estimate)
         completion_tokens=1_000 / 1_000_000,  # $30 per 1M tokens (estimate)
+    ),
+    Model.sonnet_4_5: ModelPricing(
+        prompt_tokens=3_000 / 1_000_000,  # $10 per 1M tokens (estimate)
+        reasoning_tokens=15_000 / 1_000_000,  # $50 per 1M tokens (estimate)
+        completion_tokens=15_000 / 1_000_000,  # $30 per 1M tokens (estimate)
     ),
 }
 

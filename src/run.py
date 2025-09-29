@@ -7,13 +7,12 @@ import uuid
 from pathlib import Path
 
 import asyncpg
-from src.log import log
 from pydantic import BaseModel, TypeAdapter
 
 from src.async_utils.semaphore_monitor import MonitoredSemaphore
 from src.configs.models import RunConfig, Step, StepRevision, StepRevisionPool
 from src.llms.structured import get_next_structure
-from src.utils import random_str
+from src.log import log
 
 # Import logging_config first to apply patches before any logfire usage
 from src.logging_config import generate_run_id, set_task_id
@@ -28,6 +27,7 @@ from src.main import (
     output_grid_from_instructions,
 )
 from src.models import Challenge, Input
+from src.utils import random_str
 
 TT = T.TypeVar("TT")
 
@@ -1015,10 +1015,11 @@ async def run() -> None:
 
     temp_attempts_path = root_dir / "attempts" / f"arc-prize-{year}" / "temp_solutions"
 
-    from src.configs.grok_configs import grok_config_prod
+    from src.configs.ant_configs import sonnet_4_5_config_prod
     from src.configs.fast_configs import mini_config, mini_for_testing
-    from src.configs.oss_configs import oss_config
     from src.configs.gpt_configs import gpt_config_prod
+    from src.configs.grok_configs import grok_config_prod
+    from src.configs.oss_configs import oss_config
 
     await run_from_json(
         challenges_path=challenges_path,

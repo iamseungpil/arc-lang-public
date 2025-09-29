@@ -1,4 +1,3 @@
-from src.log import log
 from pydantic import BaseModel, Field
 
 # Import logging_config first to apply patches
@@ -12,6 +11,7 @@ from src.llms.messages import (
 )
 from src.llms.models import Model
 from src.llms.structured import get_next_structure
+from src.log import log
 from src.models import GRID, Challenge, Example, Input
 
 
@@ -103,7 +103,7 @@ func_to_llm = {
         Model.o4_mini_high,
         Model.o4_mini,
     },
-    get_next_message_anthropic: {Model.sonnet_3_7, Model.sonnet_3_5},
+    get_next_message_anthropic: {Model.sonnet_3_7, Model.sonnet_3_5, Model.sonnet_4_5},
     get_next_message_gemini: {Model.gemini_2_5},
     get_next_message_deepseek: {Model.deepseek_chat, Model.deepseek_reasoner},
     get_next_message_openrouter: {

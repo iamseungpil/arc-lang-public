@@ -18,6 +18,7 @@ class Model(str, Enum):
 
     sonnet_3_7 = "claude-3-7-sonnet-latest"
     sonnet_3_5 = "claude-3-5-sonnet-latest"
+    sonnet_4_5 = "claude-sonnet-4-5-20250929"
     gemini_2_5 = "gemini-2.5-pro"
     gemini_2_5_flash_lite = "gemini-2.0-flash-lite"
 
@@ -65,4 +66,5 @@ class ModelConfig(BaseModel):
 model_config: dict[Model, ModelConfig] = {
     Model.sonnet_3_5: ModelConfig(max_tokens=8_192, max_thinking_tokens=None),
     Model.sonnet_3_7: ModelConfig(max_tokens=50_000, max_thinking_tokens=30_000),
+    Model.sonnet_4_5: ModelConfig(max_tokens=60_000, max_thinking_tokens=60_000),
 }
