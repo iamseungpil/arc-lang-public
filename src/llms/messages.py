@@ -1,4 +1,5 @@
 import os
+import typing as T
 from copy import deepcopy
 
 from anthropic import AsyncAnthropic
@@ -8,10 +9,37 @@ from openai import AsyncOpenAI
 from pydantic import BaseModel, Field
 
 from src.llms.models import Model, model_config
+from src.llms.openai_responses import (
+    OPENAI_MODEL_MAX_OUTPUT_TOKENS,
+    create_and_poll_response,
+)
 
 
 class GridOutput(BaseModel):
     grid: list[list[int]] = Field(..., description="Extracted 2D grid of integers")
+
+
+def _extract_output_text(response: dict[str, T.Any]) -> str:
+    output_text = response.get("output_text")
+    if isinstance(output_text, str) and output_text.strip():
+        return output_text
+
+    outputs = response.get("output") or []
+    texts: list[str] = []
+    for item in outputs:
+        if not isinstance(item, dict):
+            continue
+        contents = item.get("content") or []
+        for content in contents:
+            if not isinstance(content, dict):
+                continue
+            text = content.get("text")
+            if isinstance(text, str):
+                texts.append(text)
+    if texts:
+        return "\n".join(texts)
+
+    raise ValueError("Unable to extract text content from OpenAI response output.")
 
 
 async def extract_grid_from_text(
@@ -54,14 +82,20 @@ async def get_next_message_openai(model: Model, inputs: list[dict[str, str]]) ->
         params["reasoning"] = {"effort": "high"}
         model_name = model.value.replace("_high", "")
 
-    response = await client.responses.create(
-        model=model_name,
-        max_output_tokens=100_000,
-        input=inputs,
-        **params,
+    max_output_tokens = OPENAI_MODEL_MAX_OUTPUT_TOKENS.get(model, 100_000)
+    body: dict[str, T.Any] = {
+        "model": model_name,
+        "input": inputs,
+        "max_output_tokens": max_output_tokens,
+    }
+    body.update(params)
+
+    response = await create_and_poll_response(
+        client,
+        body=body,
+        model=model,
     )
-    # debug(response)
-    return response.output_text
+    return _extract_output_text(response)
 
 
 async def get_next_message_openrouter(

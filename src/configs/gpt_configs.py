@@ -1,6 +1,6 @@
 from src.configs.models import Model, RunConfig, Step, StepRevision, StepRevisionPool
 
-model = Model.gpt_5
+model = Model.gpt_5_pro
 
 gpt_config_prod = RunConfig(
     final_follow_model=model,
