@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 import time
 import typing as T
 
@@ -10,6 +11,7 @@ from src.llms.models import Model
 
 
 RESPONSES_EXTRA_HEADERS = {"OpenAI-Beta": "responses=v2"}
+RESPONSES_STORE_DISABLED = os.getenv("OPENAI_RESPONSES_STORE", "0") not in {"1", "true", "TRUE"}
 POLL_TERMINAL_STATUSES = {
     "completed",
     "cancelled",
@@ -49,6 +51,9 @@ async def create_and_poll_response(
     model: Model,
     create_kwargs: dict[str, T.Any],
 ) -> Response:
+    if RESPONSES_STORE_DISABLED and "store" not in create_kwargs:
+        create_kwargs["store"] = False
+
     response = await client.responses.create(
         extra_headers=RESPONSES_EXTRA_HEADERS,
         **create_kwargs,
