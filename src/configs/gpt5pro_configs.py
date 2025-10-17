@@ -8,7 +8,7 @@ gpt5pro_config_prod = RunConfig(
         Step(
             instruction_model=Model.gpt_5_pro,
             follow_model=Model.gpt_5_pro,
-            times=3,
+            times=2,
             timeout_secs=300,
             include_base64=False,
             use_diffs=True,
@@ -16,7 +16,7 @@ gpt5pro_config_prod = RunConfig(
         Step(
             instruction_model=Model.gpt_5_pro,
             follow_model=Model.gpt_5_pro,
-            times=3,
+            times=2,
             timeout_secs=300,
             include_base64=False,
             use_diffs=True,
@@ -24,7 +24,7 @@ gpt5pro_config_prod = RunConfig(
         Step(
             instruction_model=Model.gpt_5_pro,
             follow_model=Model.gpt_5_pro,
-            times=10,
+            times=5,
             timeout_secs=300,
             include_base64=False,
             use_diffs=True,
