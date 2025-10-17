@@ -39,10 +39,10 @@ gpt5pro_config_prod = RunConfig(
         #     use_diffs=True,
         # ),
         StepRevisionPool(
-            top_scores_used=5,
+            top_scores_used=3,
             instruction_model=Model.gpt_5_pro,
             follow_model=Model.gpt_5_pro,
-            times=5,
+            times=3,
             timeout_secs=300,
             include_base64=False,
             use_diffs=True,
