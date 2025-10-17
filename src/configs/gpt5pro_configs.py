@@ -2,13 +2,13 @@ from src.configs.models import Model, RunConfig, Step, StepRevision, StepRevisio
 
 gpt5pro_config_prod = RunConfig(
     final_follow_model=Model.gpt_5_pro,
-    final_follow_times=5,
+    final_follow_times=3,
     max_concurrent_tasks=120,
     steps=[
         Step(
             instruction_model=Model.gpt_5_pro,
             follow_model=Model.gpt_5_pro,
-            times=5,
+            times=3,
             timeout_secs=300,
             include_base64=False,
             use_diffs=True,
@@ -16,7 +16,7 @@ gpt5pro_config_prod = RunConfig(
         Step(
             instruction_model=Model.gpt_5_pro,
             follow_model=Model.gpt_5_pro,
-            times=5,
+            times=3,
             timeout_secs=300,
             include_base64=False,
             use_diffs=True,
@@ -24,7 +24,7 @@ gpt5pro_config_prod = RunConfig(
         Step(
             instruction_model=Model.gpt_5_pro,
             follow_model=Model.gpt_5_pro,
-            times=20,
+            times=10,
             timeout_secs=300,
             include_base64=False,
             use_diffs=True,
