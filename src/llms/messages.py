@@ -59,8 +59,9 @@ async def extract_grid_from_text(
     model: Model,
     text: str,
 ) -> list[list[int]]:
+    timeout = 10_800 if model is Model.gpt_5_pro else 120
     client = AsyncOpenAI(
-        api_key=os.environ["OPENAI_API_KEY"], timeout=120, max_retries=10
+        api_key=os.environ["OPENAI_API_KEY"], timeout=timeout, max_retries=10
     )
 
     response = await client.chat.completions.create(
@@ -86,7 +87,7 @@ async def extract_grid_from_text(
 
 async def get_next_message_openai(model: Model, inputs: list[dict[str, str]]) -> str:
     client = AsyncOpenAI(
-        api_key=os.environ["OPENAI_API_KEY"], timeout=600, max_retries=10
+        api_key=os.environ["OPENAI_API_KEY"], timeout=10_800, max_retries=10
     )
     params = {}
     model_name = model.value

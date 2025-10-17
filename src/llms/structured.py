@@ -119,7 +119,7 @@ def retry_with_backoff(
 
 
 openai_client = AsyncOpenAI(
-    api_key=os.environ["OPENAI_API_KEY"], timeout=9_000, max_retries=2
+    api_key=os.environ["OPENAI_API_KEY"], timeout=10_800, max_retries=2
 )
 anthropic_client = AsyncAnthropic(
     api_key=os.environ.get("ANTHROPIC_API_KEY"), timeout=3_010, max_retries=2
