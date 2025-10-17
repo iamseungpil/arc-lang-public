@@ -19,12 +19,25 @@ class GridOutput(BaseModel):
     grid: list[list[int]] = Field(..., description="Extracted 2D grid of integers")
 
 
-def _extract_output_text(response: dict[str, T.Any]) -> str:
-    output_text = response.get("output_text")
+def _extract_output_text(response: T.Any) -> str:
+    if hasattr(response, "output_text"):
+        output_text = getattr(response, "output_text")
+        if isinstance(output_text, str) and output_text.strip():
+            return output_text
+
+    payload: dict[str, T.Any]
+    if isinstance(response, dict):
+        payload = response
+    elif hasattr(response, "model_dump"):
+        payload = T.cast(dict[str, T.Any], response.model_dump())
+    else:
+        raise ValueError("Unable to interpret OpenAI response payload.")
+
+    output_text = payload.get("output_text")
     if isinstance(output_text, str) and output_text.strip():
         return output_text
 
-    outputs = response.get("output") or []
+    outputs = payload.get("output") or []
     texts: list[str] = []
     for item in outputs:
         if not isinstance(item, dict):
@@ -92,8 +105,8 @@ async def get_next_message_openai(model: Model, inputs: list[dict[str, str]]) ->
 
     response = await create_and_poll_response(
         client,
-        body=body,
         model=model,
+        create_kwargs=body,
     )
     return _extract_output_text(response)
 

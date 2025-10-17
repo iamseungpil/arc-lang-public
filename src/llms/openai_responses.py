@@ -4,10 +4,9 @@ import time
 import typing as T
 
 from openai import AsyncOpenAI
+from openai.types.responses.response import Response
 
 from src.llms.models import Model
-
-ResponsesDict = dict[str, T.Any]
 
 
 RESPONSES_EXTRA_HEADERS = {"OpenAI-Beta": "responses=v2"}
@@ -47,43 +46,39 @@ OPENAI_MODEL_MAX_OUTPUT_TOKENS: dict[Model, int] = {
 async def create_and_poll_response(
     client: AsyncOpenAI,
     *,
-    body: dict[str, T.Any],
     model: Model,
-) -> ResponsesDict:
-    options = {"extra_headers": RESPONSES_EXTRA_HEADERS}
-    created: ResponsesDict = await client.post(
-        "/responses",
-        body=body,
-        cast_to=dict,
-        options=options,
+    create_kwargs: dict[str, T.Any],
+) -> Response:
+    response = await client.responses.create(
+        extra_headers=RESPONSES_EXTRA_HEADERS,
+        **create_kwargs,
     )
 
-    status = created.get("status")
-    response_id = created.get("id")
+    status = response.status or "completed"
+    response_id = response.id
     poll_interval = POLL_DEFAULT_INTERVAL
     start_time = time.time()
 
-    current = created
+    current = response
     while status not in POLL_TERMINAL_STATUSES:
-        if response_id is None:
+        if not response_id:
             raise RuntimeError(
                 f"OpenAI response missing id while status={status} for model={model.value}"
             )
         await asyncio.sleep(poll_interval)
         poll_interval = min(poll_interval * 1.5, POLL_MAX_INTERVAL)
-        current = await client.get(
-            f"/responses/{response_id}",
-            cast_to=dict,
-            options=options,
+        current = await client.responses.retrieve(
+            response_id,
+            extra_headers=RESPONSES_EXTRA_HEADERS,
         )
-        status = current.get("status")
+        status = current.status or "completed"
         if time.time() - start_time > POLL_TIMEOUT_SECONDS:
             raise TimeoutError(
                 f"Polling OpenAI response exceeded timeout for model={model.value}"
             )
 
     if status in POLL_ERROR_STATUSES:
-        error_detail = current.get("error") or current.get("last_error") or current
+        error_detail = current.error or current.model_dump()
         raise RuntimeError(
             f"OpenAI response failed with status={status} for model={model.value}: {error_detail}"
         )
@@ -91,18 +86,20 @@ async def create_and_poll_response(
         raise RuntimeError(
             f"OpenAI response requires action (tool calls not supported) for model={model.value}"
         )
-    if status not in {"completed", "succeeded"}:
-        # Preserve the raw response for downstream logging rather than losing context.
-        current = {**current, "_warning": "non-terminal status"}
     return current
 
 
-def extract_structured_output(response: ResponsesDict) -> dict[str, T.Any]:
+def extract_structured_output(response: Response | dict[str, T.Any]) -> dict[str, T.Any]:
     """
     Extract the structured JSON payload emitted by the Responses API when using json_schema format.
     """
 
-    outputs = response.get("output") or []
+    if isinstance(response, Response):
+        payload = response.model_dump()
+    else:
+        payload = response
+
+    outputs = payload.get("output") or []
     for item in outputs:
         if not isinstance(item, dict):
             continue
@@ -119,7 +116,7 @@ def extract_structured_output(response: ResponsesDict) -> dict[str, T.Any]:
                 except json.JSONDecodeError:
                     continue
 
-    output_text = response.get("output_text")
+    output_text = payload.get("output_text")
     if isinstance(output_text, str):
         try:
             return json.loads(output_text)

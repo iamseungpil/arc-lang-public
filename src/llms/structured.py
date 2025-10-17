@@ -261,40 +261,38 @@ async def _get_next_structure_openai(
     if "additionalProperties" not in schema:
         schema["additionalProperties"] = False
 
-    response_format = {
-        "type": "json_schema",
-        "json_schema": {
-            "name": structure.__name__,
-            "schema": schema,
-            "strict": True,
-        },
-    }
-
-    body: dict[str, T.Any] = {
+    create_kwargs: dict[str, T.Any] = {
         "model": model.value,
         "input": messages,
-        "response_format": response_format,
         "max_output_tokens": max_output_tokens,
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": structure.__name__,
+                "schema": schema,
+                "strict": True,
+            }
+        },
     }
     if reasoning:
-        body["reasoning"] = reasoning
+        create_kwargs["reasoning"] = reasoning
 
     raw_response = await create_and_poll_response(
         openai_client,
-        body=body,
         model=model,
+        create_kwargs=create_kwargs,
     )
 
-    usage_dict = raw_response.get("usage") or {}
-    input_token_details = usage_dict.get("input_token_details") or {}
-    output_token_details = usage_dict.get("output_tokens_details") or {}
+    usage = raw_response.usage or {}
+    input_token_details = getattr(usage, "input_token_details", None) or {}
+    output_token_details = getattr(usage, "output_tokens_details", None) or {}
 
     openai_usage = OpenAIUsage(
-        completion_tokens=int(usage_dict.get("output_tokens") or 0),
-        prompt_tokens=int(usage_dict.get("input_tokens") or 0),
-        total_tokens=int(usage_dict.get("total_tokens") or 0),
-        reasoning_tokens=int(output_token_details.get("reasoning_tokens") or 0),
-        cached_prompt_tokens=int(input_token_details.get("cached_tokens") or 0),
+        completion_tokens=int(getattr(usage, "output_tokens", 0) or 0),
+        prompt_tokens=int(getattr(usage, "input_tokens", 0) or 0),
+        total_tokens=int(getattr(usage, "total_tokens", 0) or 0),
+        reasoning_tokens=int(getattr(output_token_details, "reasoning_tokens", 0) or 0),
+        cached_prompt_tokens=int(getattr(input_token_details, "cached_tokens", 0) or 0),
     )
 
     log.debug(
@@ -302,12 +300,12 @@ async def _get_next_structure_openai(
         model=model.value,
         usage=openai_usage.model_dump(),
         cents=openai_usage.cents(model=model),
-        finish_reason=raw_response.get("finish_reason"),
-        reasoning_content=raw_response.get("reasoning"),
+        finish_reason=getattr(raw_response, "finish_reason", None),
+        reasoning_content=getattr(raw_response, "reasoning", None),
     )
 
     if model in [Model.o3_pro]:
-        debug(raw_response)
+        debug(raw_response.model_dump())
 
     payload = extract_structured_output(raw_response)
     output: BMType = structure.model_validate(payload)
