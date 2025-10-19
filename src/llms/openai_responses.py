@@ -281,11 +281,13 @@ def _log_stream_event(model: Model, event: ResponseStreamEvent) -> None:
         )
     elif event_type == "response.output_item.added":
         # New output item started
+        item = getattr(event, "item", None)
+        item_type = getattr(item, "type", None) if item else None
         log.info(
             "openai_output_item_added",
             model=model.value,
             output_index=getattr(event, "output_index", None),
-            item_type=getattr(event, "item", {}).get("type") if hasattr(event, "item") else None,
+            item_type=item_type,
             sequence_number=sequence_number,
         )
     # Reasoning events
