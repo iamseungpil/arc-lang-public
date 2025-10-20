@@ -987,8 +987,8 @@ async def run_from_json(
 async def run() -> None:
     # Generate and print run ID at the start
 
-    year = "2024"
-    train_or_eval = "training"
+    year = "2025"
+    train_or_eval = "evaluation"
     root_dir = Path(__file__).parent.parent
 
     challenges_path = (

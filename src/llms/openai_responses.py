@@ -63,66 +63,43 @@ async def create_and_poll_response(
     create_kwargs = dict(create_kwargs)
     extra_body: dict[str, T.Any] = dict(create_kwargs.pop("extra_body", {}) or {})
     extra_headers: dict[str, T.Any] = dict(create_kwargs.pop("extra_headers", {}) or {})
-    headers = dict(RESPONSES_EXTRA_HEADERS)
-    headers.update(extra_headers)
+    headers = {**RESPONSES_EXTRA_HEADERS, **extra_headers}
 
-    is_gpt5_model = model in {Model.gpt_5, Model.gpt_5_pro}
+    is_gpt5 = model in {Model.gpt_5, Model.gpt_5_pro}
 
-    # Configure defaults for GPT-5 models
-    if is_gpt5_model:
-        # Default to streaming for better UX
-        if "stream" not in create_kwargs:
-            create_kwargs["stream"] = True
-
-        # Enable background mode for GPT-5 models - REQUIRED for long-running tasks
-        # GPT-5 models can think for over an hour, exceeding foreground 1h TTL
-        # Background mode allows unlimited runtime with proper timeout handling
-        # Note: There's a known latency issue - time to first token is higher with background mode
-        # but this is necessary to prevent timeouts on long reasoning tasks
-        if "background" not in extra_body:
-            extra_body["background"] = True
-
-        # Background mode requires store=True
+    # Configure GPT-5 defaults: streaming, background mode, low verbosity for Pro
+    if is_gpt5:
+        create_kwargs.setdefault("stream", True)
         create_kwargs["store"] = True
+        extra_body.setdefault("background", True)
 
-        # Set verbosity to low for GPT-5-Pro to reduce token usage
-        # Verbosity is nested inside the 'text' parameter
-        if model == Model.gpt_5_pro and "text" not in create_kwargs:
-            create_kwargs["text"] = {"verbosity": "low"}
-        elif model == Model.gpt_5_pro and "text" in create_kwargs:
-            # If text already exists, merge verbosity into it
-            if isinstance(create_kwargs["text"], dict) and "verbosity" not in create_kwargs["text"]:
-                create_kwargs["text"]["verbosity"] = "low"
+        # Set low verbosity for GPT-5-Pro to reduce token usage
+        if model == Model.gpt_5_pro:
+            text_config = create_kwargs.setdefault("text", {})
+            if isinstance(text_config, dict):
+                text_config.setdefault("verbosity", "low")
     else:
-        # For non-GPT-5 models, store responses by default
-        if "store" not in create_kwargs:
-            create_kwargs["store"] = True
+        create_kwargs.setdefault("store", True)
 
     if extra_body:
         create_kwargs["extra_body"] = extra_body
 
-    streaming_requested = bool(create_kwargs.get("stream"))
-    is_background_mode = bool(extra_body.get("background", False))
-    verbosity = None
-    if isinstance(create_kwargs.get("text"), dict):
-        verbosity = create_kwargs["text"].get("verbosity")
-
     log.info(
         "openai_request_config",
         model=model.value,
-        streaming=streaming_requested,
-        background=is_background_mode,
+        streaming=create_kwargs.get("stream", False),
+        background=extra_body.get("background", False),
         store=create_kwargs.get("store"),
-        verbosity=verbosity,
+        verbosity=create_kwargs.get("text", {}).get("verbosity") if isinstance(create_kwargs.get("text"), dict) else None,
+        tools=len(create_kwargs.get("tools", [])),
     )
 
-    if streaming_requested:
+    if create_kwargs.get("stream"):
         return await _handle_streaming_response(
             client=client,
             model=model,
             create_kwargs=create_kwargs,
             headers=headers,
-            is_background_mode=is_background_mode,
         )
     else:
         return await _handle_polling_response(
@@ -138,44 +115,72 @@ async def _handle_streaming_response(
     model: Model,
     create_kwargs: dict[str, T.Any],
     headers: dict[str, T.Any],
-    is_background_mode: bool,
 ) -> Response:
     """Handle streaming responses with support for background mode."""
+    from openai import APIError
+
     # Enable detailed reasoning summaries for GPT-5 models
     if model in {Model.gpt_5, Model.gpt_5_pro} and "reasoning" not in create_kwargs:
         create_kwargs["reasoning"] = {"generate_summary": "detailed"}
 
-    # When using background + stream together, responses.create() returns a stream directly
-    # Remove stream from kwargs for the standard (non-background) path only
-    if not is_background_mode:
-        create_kwargs.pop("stream", None)
-        stream_manager = client.responses.stream(extra_headers=headers, **create_kwargs)
-    else:
-        # For background streaming, create() with stream=True returns AsyncStream directly
-        stream_manager = await client.responses.create(extra_headers=headers, **create_kwargs)
+    # GPT-5 models always use background streaming (create returns AsyncStream directly)
+    # Other models use standard streaming
+    is_gpt5 = model in {Model.gpt_5, Model.gpt_5_pro}
 
     final_response: Response | None = None
     response_id: str | None = None
     last_sequence_number: int | None = None
+    max_retries = 3
+    retry_delay = 2.0
 
-    async with stream_manager as stream:
-        async for event in stream:
-            _log_stream_event(model, event)
+    for attempt in range(max_retries):
+        try:
+            # Create stream manager
+            if is_gpt5:
+                # Background streaming for GPT-5: create() returns stream directly
+                stream_manager = await client.responses.create(extra_headers=headers, **create_kwargs)
+            else:
+                # Standard streaming for other models
+                create_kwargs.pop("stream", None)
+                stream_manager = client.responses.stream(extra_headers=headers, **create_kwargs)
 
-            # Track sequence_number for resumable background streams
-            sequence_number = getattr(event, "sequence_number", None)
-            if sequence_number is not None:
-                last_sequence_number = sequence_number
+            async with stream_manager as stream:
+                async for event in stream:
+                    _log_stream_event(model, event)
 
-            event_type = getattr(event, "type", None)
-            if event_type == "response.created" and response_id is None:
-                response = getattr(event, "response", None)
-                response_id = getattr(response, "id", None)
-            elif event_type in {"response.completed", "response.failed", "response.incomplete"}:
-                final_response = getattr(event, "response", None)
+                    # Track sequence_number for resumable streams
+                    sequence_number = getattr(event, "sequence_number", None)
+                    if sequence_number is not None:
+                        last_sequence_number = sequence_number
 
-    # Log cursor for resumable background streams
-    if is_background_mode and last_sequence_number is not None:
+                    event_type = getattr(event, "type", None)
+                    if event_type == "response.created" and response_id is None:
+                        response = getattr(event, "response", None)
+                        response_id = getattr(response, "id", None)
+                    elif event_type in {"response.completed", "response.failed", "response.incomplete"}:
+                        final_response = getattr(event, "response", None)
+            break  # Success
+        except APIError as e:
+            if attempt < max_retries - 1:
+                log.warning(
+                    "openai_stream_retry",
+                    model=model.value,
+                    attempt=attempt + 1,
+                    max_retries=max_retries,
+                    error=str(e),
+                )
+                await asyncio.sleep(retry_delay * (attempt + 1))
+            else:
+                log.error(
+                    "openai_stream_error",
+                    model=model.value,
+                    response_id=response_id,
+                    error=str(e),
+                )
+                raise
+
+    # Log final cursor for resumable streams
+    if is_gpt5 and last_sequence_number is not None:
         log.info(
             "openai_stream_complete",
             model=model.value,
@@ -198,48 +203,34 @@ async def _handle_polling_response(
     headers: dict[str, T.Any],
 ) -> Response:
     """Handle non-streaming responses with polling for background mode."""
-    response = await client.responses.create(extra_headers=headers, **create_kwargs)
+    current = await client.responses.create(extra_headers=headers, **create_kwargs)
+    status = current.status or "completed"
 
-    status = response.status or "completed"
-    response_id = response.id
-
-    # Return immediately if already completed
     if status in POLL_TERMINAL_STATUSES:
-        return response
+        return current
 
-    # Poll for completion with exponential backoff
+    # Poll with exponential backoff (max 3 hours for long-running tasks)
+    response_id = current.id
+    if not response_id:
+        raise RuntimeError(f"Response missing ID for {model.value}")
+
     poll_interval = POLL_DEFAULT_INTERVAL
     start_time = time.time()
-    current = response
 
     while status not in POLL_TERMINAL_STATUSES:
-        if not response_id:
-            raise RuntimeError(
-                f"Response missing ID while status={status} for {model.value}"
-            )
-
-        # Check timeout (3 hours for long-running background tasks)
         if time.time() - start_time > POLL_TIMEOUT_SECONDS:
-            raise TimeoutError(
-                f"Response polling exceeded {POLL_TIMEOUT_SECONDS}s timeout for {model.value}"
-            )
+            raise TimeoutError(f"Response polling timeout after {POLL_TIMEOUT_SECONDS}s for {model.value}")
 
         await asyncio.sleep(poll_interval)
         poll_interval = min(poll_interval * 1.5, POLL_MAX_INTERVAL)
-
         current = await client.responses.retrieve(response_id, extra_headers=headers)
         status = current.status or "completed"
 
-    # Check for error statuses
+    # Check final status
     if status in POLL_ERROR_STATUSES:
-        error_detail = current.error or current.model_dump()
-        raise RuntimeError(
-            f"Response failed with status={status} for {model.value}: {error_detail}"
-        )
+        raise RuntimeError(f"Response {status} for {model.value}: {current.error or current.model_dump()}")
     if status == "requires_action":
-        raise RuntimeError(
-            f"Response requires action (tool calls not supported) for {model.value}"
-        )
+        raise RuntimeError(f"Response requires action (not supported) for {model.value}")
 
     return current
 
@@ -270,8 +261,8 @@ def _log_stream_event(model: Model, event: ResponseStreamEvent) -> None:
         )
     # Content streaming events
     elif event_type == "response.output_text.delta":
-        # Regular output text streaming
-        log.debug(
+        # Regular output text streaming - use INFO so it shows in Logfire real-time
+        log.info(
             "openai_stream_text_delta",
             model=model.value,
             delta=getattr(event, "delta", ""),
