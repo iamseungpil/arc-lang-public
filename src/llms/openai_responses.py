@@ -147,17 +147,19 @@ async def _handle_polling_response(
                 status=resp.status,
             )
 
-            # Check for server errors that should be retried
+            # Check for transient errors that should be retried
             if resp.status == "failed" and resp.error:
-                error_code = getattr(resp.error, "code", None)
-                if error_code == "server_error" and attempt < max_retries - 1:
+                error_code = resp.error.code if resp.error else None
+                # Retry server errors and rate limits
+                if error_code in {"server_error", "rate_limit_exceeded"} and attempt < max_retries - 1:
                     log.warning(
-                        "openai_server_error_retry",
+                        "openai_transient_error_retry",
                         model=model.value,
                         response_id=resp.id,
+                        error_code=error_code,
                         attempt=attempt + 1,
                         max_retries=max_retries,
-                        error=resp.error,
+                        error_message=resp.error.message if resp.error else None,
                     )
                     await asyncio.sleep(retry_delay * (attempt + 1))
                     continue  # Retry with new request
