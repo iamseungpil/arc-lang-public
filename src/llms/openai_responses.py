@@ -104,49 +104,89 @@ async def _handle_polling_response(
     create_kwargs: dict[str, T.Any],
     headers: dict[str, T.Any],
 ) -> Response:
-    """Create and poll response until completion (async version of OpenAI docs example)."""
-    resp = await client.responses.create(extra_headers=headers, **create_kwargs)
+    """Create and poll response until completion with retry logic for server errors."""
+    max_retries = 3
+    retry_delay = 5.0
 
-    log.info(
-        "openai_response_created",
-        model=model.value,
-        response_id=resp.id,
-        status=resp.status,
-    )
+    for attempt in range(max_retries):
+        try:
+            resp = await client.responses.create(extra_headers=headers, **create_kwargs)
 
-    poll_interval = POLL_DEFAULT_INTERVAL
-    start_time = time.time()
+            log.info(
+                "openai_response_created",
+                model=model.value,
+                response_id=resp.id,
+                status=resp.status,
+                attempt=attempt + 1,
+            )
 
-    # Poll while queued or in_progress
-    while resp.status in {"queued", "in_progress"}:
-        if time.time() - start_time > POLL_TIMEOUT_SECONDS:
-            raise TimeoutError(f"Response polling timeout after {POLL_TIMEOUT_SECONDS}s for {model.value}")
+            poll_interval = POLL_DEFAULT_INTERVAL
+            start_time = time.time()
 
-        log.info(
-            "openai_response_polling",
-            model=model.value,
-            response_id=resp.id,
-            status=resp.status,
-        )
+            # Poll while queued or in_progress
+            while resp.status in {"queued", "in_progress"}:
+                if time.time() - start_time > POLL_TIMEOUT_SECONDS:
+                    raise TimeoutError(f"Response polling timeout after {POLL_TIMEOUT_SECONDS}s for {model.value}")
 
-        await asyncio.sleep(poll_interval)
-        poll_interval = min(poll_interval * 1.5, POLL_MAX_INTERVAL)
-        resp = await client.responses.retrieve(resp.id, extra_headers=headers)
+                log.info(
+                    "openai_response_polling",
+                    model=model.value,
+                    response_id=resp.id,
+                    status=resp.status,
+                )
 
-    # Check final status
-    log.info(
-        "openai_response_final",
-        model=model.value,
-        response_id=resp.id,
-        status=resp.status,
-    )
+                await asyncio.sleep(poll_interval)
+                poll_interval = min(poll_interval * 1.5, POLL_MAX_INTERVAL)
+                resp = await client.responses.retrieve(resp.id, extra_headers=headers)
 
-    if resp.status in POLL_ERROR_STATUSES:
-        raise RuntimeError(f"Response {resp.status} for {model.value}: {resp.error or resp.model_dump()}")
-    if resp.status == "requires_action":
-        raise RuntimeError(f"Response requires action (not supported) for {model.value}")
+            # Check final status
+            log.info(
+                "openai_response_final",
+                model=model.value,
+                response_id=resp.id,
+                status=resp.status,
+            )
 
-    return resp
+            # Check for server errors that should be retried
+            if resp.status == "failed" and resp.error:
+                error_code = getattr(resp.error, "code", None)
+                if error_code == "server_error" and attempt < max_retries - 1:
+                    log.warning(
+                        "openai_server_error_retry",
+                        model=model.value,
+                        response_id=resp.id,
+                        attempt=attempt + 1,
+                        max_retries=max_retries,
+                        error=resp.error,
+                    )
+                    await asyncio.sleep(retry_delay * (attempt + 1))
+                    continue  # Retry with new request
+
+            # Non-retryable errors
+            if resp.status in POLL_ERROR_STATUSES:
+                raise RuntimeError(f"Response {resp.status} for {model.value}: {resp.error or resp.model_dump()}")
+            if resp.status == "requires_action":
+                raise RuntimeError(f"Response requires action (not supported) for {model.value}")
+
+            return resp
+
+        except TimeoutError:
+            # Don't retry timeouts
+            raise
+        except Exception as e:
+            if attempt < max_retries - 1:
+                log.warning(
+                    "openai_request_error_retry",
+                    model=model.value,
+                    attempt=attempt + 1,
+                    max_retries=max_retries,
+                    error=str(e),
+                )
+                await asyncio.sleep(retry_delay * (attempt + 1))
+            else:
+                raise
+
+    raise RuntimeError(f"Max retries exceeded for {model.value}")
 
 
 def extract_structured_output(response: Response | dict[str, T.Any]) -> dict[str, T.Any]:
