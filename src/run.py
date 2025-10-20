@@ -1028,8 +1028,8 @@ async def run() -> None:
         config=gpt5pro_config_prod,
         attempts_path=attempts_path,
         temp_attempts_dir=temp_attempts_path,
-        limit=1,
-        offset=0,
+        limit=4,
+        offset=1,
         # task_ids={"b0039139", "20270e3b"},
     )
 
