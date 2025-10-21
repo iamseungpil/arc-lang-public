@@ -1017,10 +1017,10 @@ async def run() -> None:
 
     from src.configs.ant_configs import sonnet_4_5_config_prod
     from src.configs.fast_configs import mini_config, mini_for_testing
+    from src.configs.gpt5pro_configs import gpt5pro_config_prod
     from src.configs.gpt_configs import gpt_config_prod
     from src.configs.grok_configs import grok_config_prod
     from src.configs.oss_configs import oss_config
-    from src.configs.gpt5pro_configs import gpt5pro_config_prod
 
     await run_from_json(
         challenges_path=challenges_path,
@@ -1028,8 +1028,8 @@ async def run() -> None:
         config=gpt5pro_config_prod,
         attempts_path=attempts_path,
         temp_attempts_dir=temp_attempts_path,
-        limit=5,
-        offset=10,
+        limit=10,
+        offset=9,
         # task_ids={"b0039139", "20270e3b"},
     )
 
