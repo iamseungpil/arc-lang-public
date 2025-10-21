@@ -39,7 +39,7 @@ def filter_out_exceptions(lst: list[TT | Exception], description: str) -> list[T
             f"{description}: {type(e).__name__}",
             error_type=type(e).__name__,
             error_message=str(e),
-            traceback=''.join(traceback.format_exception(type(e), e, e.__traceback__)),
+            traceback="".join(traceback.format_exception(type(e), e, e.__traceback__)),
         )
     return [i for i in lst if not isinstance(i, Exception)]
 
@@ -987,7 +987,7 @@ async def run_from_json(
 async def run() -> None:
     # Generate and print run ID at the start
 
-    year = "2025"
+    year = "2024"
     train_or_eval = "evaluation"
     root_dir = Path(__file__).parent.parent
 
@@ -1028,8 +1028,8 @@ async def run() -> None:
         config=gpt5pro_config_prod,
         attempts_path=attempts_path,
         temp_attempts_dir=temp_attempts_path,
-        limit=2,
-        offset=5,
+        limit=5,
+        offset=10,
         # task_ids={"b0039139", "20270e3b"},
     )
 
