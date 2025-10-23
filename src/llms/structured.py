@@ -17,6 +17,11 @@ from xai_sdk.chat import assistant, image, system, user
 
 from src.async_utils.semaphore_monitor import MonitoredSemaphore
 from src.llms.models import Model
+from src.llms.openai_responses import (
+    OPENAI_MODEL_MAX_OUTPUT_TOKENS,
+    create_and_poll_response,
+    extract_structured_output,
+)
 from src.log import log
 from src.utils import random_str
 
@@ -114,7 +119,7 @@ def retry_with_backoff(
 
 
 openai_client = AsyncOpenAI(
-    api_key=os.environ["OPENAI_API_KEY"], timeout=3600, max_retries=2
+    api_key=os.environ["OPENAI_API_KEY"], timeout=10_800, max_retries=2
 )
 anthropic_client = AsyncAnthropic(
     api_key=os.environ.get("ANTHROPIC_API_KEY"), timeout=3_010, max_retries=2
@@ -170,6 +175,7 @@ async def get_next_structure(
                 Model.gpt_4_1_mini,
                 Model.o3_pro,
                 Model.gpt_5,
+                Model.gpt_5_pro,
             ]:
                 res = await _get_next_structure_openai(
                     structure=structure, model=model, messages=messages
@@ -245,51 +251,64 @@ async def _get_next_structure_openai(
     model: Model,
     messages: list,
 ) -> BMType:
-    if model in [Model.o3, Model.o4_mini, Model.o3_pro, Model.gpt_5]:
+    reasoning: dict[str, str] | None = None
+    if model in [Model.o3, Model.o4_mini, Model.o3_pro, Model.gpt_5, Model.gpt_5_pro]:
         reasoning = {"effort": "high"}
-    else:
-        reasoning = None
-    response = await openai_client.responses.parse(
-        model=model.value,
-        input=messages,
-        text_format=structure,
-        max_output_tokens=128_000,
-        reasoning=reasoning,
+
+    max_output_tokens = OPENAI_MODEL_MAX_OUTPUT_TOKENS.get(model, 128_000)
+
+    schema = structure.model_json_schema()
+    if "additionalProperties" not in schema:
+        schema["additionalProperties"] = False
+
+    create_kwargs: dict[str, T.Any] = {
+        "model": model.value,
+        "input": messages,
+        "max_output_tokens": max_output_tokens,
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": structure.__name__,
+                "schema": schema,
+                "strict": True,
+            }
+        },
+    }
+    if reasoning:
+        create_kwargs["reasoning"] = reasoning
+
+    raw_response = await create_and_poll_response(
+        openai_client,
+        model=model,
+        create_kwargs=create_kwargs,
     )
 
-    # Build usage object
-    usage = response.usage
+    usage = raw_response.usage or {}
+    input_token_details = getattr(usage, "input_token_details", None) or {}
+    output_token_details = getattr(usage, "output_tokens_details", None) or {}
 
-    # OpenAI responses API uses different attribute names
     openai_usage = OpenAIUsage(
-        completion_tokens=getattr(usage, "output_tokens", 0),
-        prompt_tokens=getattr(usage, "input_tokens", 0),
-        total_tokens=getattr(usage, "total_tokens", 0),
-        reasoning_tokens=getattr(
-            getattr(usage, "output_tokens_details", None), "reasoning_tokens", 0
-        )
-        if hasattr(usage, "output_tokens_details") and usage.output_tokens_details
-        else 0,
-        cached_prompt_tokens=getattr(
-            getattr(usage, "input_tokens_details", None), "cached_tokens", 0
-        )
-        if hasattr(usage, "input_tokens_details") and usage.input_tokens_details
-        else 0,
+        completion_tokens=int(getattr(usage, "output_tokens", 0) or 0),
+        prompt_tokens=int(getattr(usage, "input_tokens", 0) or 0),
+        total_tokens=int(getattr(usage, "total_tokens", 0) or 0),
+        reasoning_tokens=int(getattr(output_token_details, "reasoning_tokens", 0) or 0),
+        cached_prompt_tokens=int(getattr(input_token_details, "cached_tokens", 0) or 0),
     )
 
-    # Log usage with logfire
     log.debug(
         "openai_usage",
         model=model.value,
         usage=openai_usage.model_dump(),
         cents=openai_usage.cents(model=model),
-        finish_reason=getattr(response, "finish_reason", None),
-        reasoning_content=getattr(response, "reasoning_content", None),
+        finish_reason=getattr(raw_response, "finish_reason", None),
+        reasoning_content=getattr(raw_response, "reasoning", None),
     )
 
     if model in [Model.o3_pro]:
-        debug(response)
-    output: BMType = response.output_parsed
+        debug(raw_response.model_dump())
+
+    payload = extract_structured_output(raw_response)
+    output: BMType = structure.model_validate(payload)
     return output
 
 
@@ -431,6 +450,11 @@ MODEL_PRICING_D: dict[Model, ModelPricing] = {
         prompt_tokens=125 / 1_000_000,  # $10 per 1M tokens (estimate)
         reasoning_tokens=1_000 / 1_000_000,  # $50 per 1M tokens (estimate)
         completion_tokens=1_000 / 1_000_000,  # $30 per 1M tokens (estimate)
+    ),
+    Model.gpt_5_pro: ModelPricing(
+        prompt_tokens=200 / 1_000_000,  # $20 per 1M tokens (estimate)
+        reasoning_tokens=1_200 / 1_000_000,  # $60 per 1M tokens (estimate)
+        completion_tokens=1_200 / 1_000_000,  # $60 per 1M tokens (estimate)
     ),
     Model.sonnet_4_5: ModelPricing(
         prompt_tokens=3_000 / 1_000_000,  # $10 per 1M tokens (estimate)

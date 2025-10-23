@@ -15,6 +15,7 @@ class Model(str, Enum):
     gpt_4_1 = "gpt-4.1"
     gpt_4_1_mini = "gpt-4.1-mini"
     gpt_5 = "gpt-5"
+    gpt_5_pro = "gpt-5-pro"
 
     sonnet_3_7 = "claude-3-7-sonnet-latest"
     sonnet_3_5 = "claude-3-5-sonnet-latest"
@@ -67,4 +68,6 @@ model_config: dict[Model, ModelConfig] = {
     Model.sonnet_3_5: ModelConfig(max_tokens=8_192, max_thinking_tokens=None),
     Model.sonnet_3_7: ModelConfig(max_tokens=50_000, max_thinking_tokens=30_000),
     Model.sonnet_4_5: ModelConfig(max_tokens=60_000, max_thinking_tokens=60_000),
+    Model.gpt_5: ModelConfig(max_tokens=1_000_000, max_thinking_tokens=None),
+    Model.gpt_5_pro: ModelConfig(max_tokens=4_000_000, max_thinking_tokens=None),
 }

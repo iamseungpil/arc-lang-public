@@ -102,6 +102,8 @@ func_to_llm = {
         Model.o3_mini_high,
         Model.o4_mini_high,
         Model.o4_mini,
+        Model.gpt_5,
+        Model.gpt_5_pro,
     },
     get_next_message_anthropic: {Model.sonnet_3_7, Model.sonnet_3_5, Model.sonnet_4_5},
     get_next_message_gemini: {Model.gemini_2_5},

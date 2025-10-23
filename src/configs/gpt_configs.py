@@ -1,6 +1,6 @@
 from src.configs.models import Model, RunConfig, Step, StepRevision, StepRevisionPool
 
-model = Model.gpt_5
+model = Model.gpt_5_pro
 
 gpt_config_prod = RunConfig(
     final_follow_model=model,
@@ -11,7 +11,7 @@ gpt_config_prod = RunConfig(
             instruction_model=model,
             follow_model=model,
             times=5,
-            timeout_secs=300,
+            timeout_secs=10_800,
             include_base64=False,
             use_diffs=True,
         ),
@@ -19,7 +19,7 @@ gpt_config_prod = RunConfig(
             instruction_model=model,
             follow_model=model,
             times=5,
-            timeout_secs=300,
+            timeout_secs=10_800,
             include_base64=False,
             use_diffs=True,
         ),
@@ -27,7 +27,7 @@ gpt_config_prod = RunConfig(
             instruction_model=model,
             follow_model=model,
             times=20,
-            timeout_secs=300,
+            timeout_secs=10_800,
             include_base64=False,
             use_diffs=True,
         ),
@@ -36,7 +36,7 @@ gpt_config_prod = RunConfig(
         #     instruction_model=model,
         #     follow_model=model,
         #     times_per_top_score=1,
-        #     timeout_secs=300,
+        #     timeout_secs=10_800,
         #     include_base64=False,
         #     use_diffs=True,
         # ),
@@ -45,7 +45,7 @@ gpt_config_prod = RunConfig(
             instruction_model=model,
             follow_model=model,
             times=5,
-            timeout_secs=300,
+            timeout_secs=10_800,
             include_base64=False,
             use_diffs=True,
         ),
