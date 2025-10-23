@@ -1029,7 +1029,7 @@ async def run() -> None:
         attempts_path=attempts_path,
         temp_attempts_dir=temp_attempts_path,
         limit=10,
-        offset=20,
+        offset=70,
         # task_ids={"b0039139", "20270e3b"},
     )
 
