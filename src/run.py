@@ -1006,16 +1006,16 @@ async def run() -> None:
     )
     # solutions_path = None
 
-    # Use /data/arclang for logs, checkpoints, and attempts
-    arclang_data_dir = Path("/data/arclang")
-    attempts_path = (
-        arclang_data_dir
-        / "attempts"
-        / f"arc-prize-{year}"
-        / f"arc-agi_{train_or_eval}_attempts.json"
-    )
+    # Use environment variable for data directory, fallback to repo root
+    arclang_data_dir = Path(os.environ.get("ARCLANG_DATA_DIR", root_dir))
 
-    temp_attempts_path = arclang_data_dir / "attempts" / f"arc-prize-{year}" / "temp_solutions"
+    # Ensure directory structure exists
+    attempts_dir = arclang_data_dir / "attempts" / f"arc-prize-{year}"
+    attempts_dir.mkdir(parents=True, exist_ok=True)
+
+    attempts_path = attempts_dir / f"arc-agi_{train_or_eval}_attempts.json"
+    temp_attempts_path = attempts_dir / "temp_solutions"
+    temp_attempts_path.mkdir(exist_ok=True)
 
     from src.configs.ant_configs import sonnet_4_5_config_prod
     from src.configs.fast_configs import mini_config, mini_for_testing

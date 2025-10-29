@@ -3,9 +3,11 @@
 # ARC Experiment Runner Script
 set -e
 
-cd /home/ubuntu/arc-lang-public
+# Get script directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
 
-export PYTHONPATH=/home/ubuntu/arc-lang-public
+export PYTHONPATH="$SCRIPT_DIR"
 export MAX_CONCURRENCY=20
 export LOCAL_LOGS_ONLY=1
 export LOCAL_VLLM_URL=http://localhost:8000/v1

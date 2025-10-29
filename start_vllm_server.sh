@@ -11,10 +11,10 @@ echo "==================================================="
 
 # Configuration
 MODEL_NAME="openai/gpt-oss-20b"
-GPUS="0,1"
-TENSOR_PARALLEL=2
-PORT=8000
-LOG_DIR="/data/arclang/logs"
+GPUS="${VLLM_GPUS:-0,1}"
+TENSOR_PARALLEL="${VLLM_TENSOR_PARALLEL:-2}"
+PORT="${VLLM_PORT:-8000}"
+LOG_DIR="${ARCLANG_DATA_DIR:-$(pwd)}/logs"
 LOG_FILE="$LOG_DIR/vllm_server_$(date +%Y%m%d_%H%M%S).log"
 
 # Create log directory

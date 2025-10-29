@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """Check accuracy of completed challenges so far"""
 import json
+import os
 from pathlib import Path
 from pydantic import TypeAdapter
 
-# Paths
-attempts_path = Path("/data/arclang/attempts/arc-prize-2024/arc-agi_evaluation_attempts.json")
-solutions_path = Path("/home/ubuntu/arc-lang-public/data/arc-prize-2024/arc-agi_evaluation_solutions.json")
+# Paths - use environment variable or fallback to repo root
+repo_root = Path(__file__).parent
+data_dir = Path(os.environ.get("ARCLANG_DATA_DIR", repo_root))
+attempts_path = data_dir / "attempts/arc-prize-2024/arc-agi_evaluation_attempts.json"
+solutions_path = repo_root / "data/arc-prize-2024/arc-agi_evaluation_solutions.json"
 
 # Load data
 if not attempts_path.exists():

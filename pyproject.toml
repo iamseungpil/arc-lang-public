@@ -21,6 +21,11 @@ dependencies = [
 [dependency-groups]
 dev = ["ruff>=0.11.4"]
 
+[project.optional-dependencies]
+vllm = [
+    "vllm>=0.6.0,<0.7.0",
+]
+
 
 [tool.mypy]
 plugins = 'pydantic.mypy'
