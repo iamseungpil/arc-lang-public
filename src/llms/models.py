@@ -58,6 +58,8 @@ class Model(str, Enum):
     cerebras_gpt_oss_120b = "gpt-oss-120b"
     groq_gpt_oss_120b = "openai/gpt-oss-120b"
 
+    local_gpt_oss_20b = "openai/gpt-oss-20b"
+
 
 class ModelConfig(BaseModel):
     max_tokens: int

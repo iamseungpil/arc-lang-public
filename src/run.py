@@ -1006,30 +1006,32 @@ async def run() -> None:
     )
     # solutions_path = None
 
+    # Use /data/arclang for logs, checkpoints, and attempts
+    arclang_data_dir = Path("/data/arclang")
     attempts_path = (
-        root_dir
+        arclang_data_dir
         / "attempts"
         / f"arc-prize-{year}"
         / f"arc-agi_{train_or_eval}_attempts.json"
     )
 
-    temp_attempts_path = root_dir / "attempts" / f"arc-prize-{year}" / "temp_solutions"
+    temp_attempts_path = arclang_data_dir / "attempts" / f"arc-prize-{year}" / "temp_solutions"
 
     from src.configs.ant_configs import sonnet_4_5_config_prod
     from src.configs.fast_configs import mini_config, mini_for_testing
     from src.configs.gpt5pro_configs import gpt5pro_config_prod
     from src.configs.gpt_configs import gpt_config_prod
     from src.configs.grok_configs import grok_config_prod
-    from src.configs.oss_configs import oss_config
+    from src.configs.oss_configs import local_gpt_oss_20b_config, oss_config
 
     await run_from_json(
         challenges_path=challenges_path,
         truth_solutions_path=solutions_path,
-        config=gpt5pro_config_prod,
+        config=local_gpt_oss_20b_config,
         attempts_path=attempts_path,
         temp_attempts_dir=temp_attempts_path,
-        limit=10,
-        offset=70,
+        limit=None,  # Run all 400 validation problems
+        offset=0,
         # task_ids={"b0039139", "20270e3b"},
     )
 

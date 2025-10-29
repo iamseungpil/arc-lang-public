@@ -140,6 +140,14 @@ gemini_client = genai.Client(
     api_key=os.environ["GEMINI_API_KEY"],
 )
 
+# Local vLLM server client for GPT-OSS 20B
+local_vllm_client = AsyncOpenAI(
+    api_key="EMPTY",  # vLLM doesn't require API key
+    base_url=os.environ.get("LOCAL_VLLM_URL", "http://localhost:8000/v1"),
+    timeout=2500,
+    max_retries=2,
+)
+
 # Semaphore to limit concurrent API calls to 100
 API_SEMAPHORE = MonitoredSemaphore(
     int(os.environ["MAX_CONCURRENCY"]), name="API_SEMAPHORE"
@@ -194,6 +202,10 @@ async def get_next_structure(
                 )
             elif model in [Model.gemini_2_5, Model.gemini_2_5_flash_lite]:
                 res = await _get_next_structure_gemini(
+                    structure=structure, model=model, messages=messages
+                )
+            elif model in [Model.local_gpt_oss_20b]:
+                res = await _get_next_structure_local_vllm(
                     structure=structure, model=model, messages=messages
                 )
             elif model in [
@@ -795,6 +807,97 @@ async def _get_next_structure_openrouter(
         return output
     except json.JSONDecodeError as e:
         raise Exception(f"Failed to parse JSON response: {e}\nResponse: {content}")
+
+
+async def _get_next_structure_local_vllm(
+    structure: type[BMType],  # type[T]
+    model: Model,
+    messages: list,
+) -> BMType:
+    """Call local vLLM server with OpenAI-compatible API.
+
+    Uses progressive max_tokens strategy: starts at 8000, increases to 20000 if needed.
+    """
+    import json
+    import re
+
+    # Convert messages to simple format
+    messages = update_messages_openrouter(
+        messages=messages,
+        structure=structure,
+        use_json_object=True,
+    )
+
+    # Progressive max_tokens strategy: 8000 -> 12000 -> 16000 -> 20000 (limit at 20k)
+    max_tokens_list = [8000, 12000, 16000, 20000]
+    last_error = None
+
+    for attempt, max_tokens in enumerate(max_tokens_list, 1):
+        try:
+            if attempt > 1:
+                print(f"[DEBUG] Attempt {attempt}/{len(max_tokens_list)} with max_tokens={max_tokens}")
+
+            # Use json_object mode since vLLM may not support json_schema
+            response = await local_vllm_client.chat.completions.create(
+                model=model.value,
+                messages=messages,
+                response_format={"type": "json_object"},
+                max_tokens=max_tokens,
+                temperature=0.3,  # Lower temperature to reduce reasoning mode
+                extra_body={"skip_special_tokens": True},  # Try to avoid reasoning tokens
+            )
+
+            # Parse the JSON response
+            message = response.choices[0].message
+            content = message.content
+            finish_reason = response.choices[0].finish_reason
+
+            # Check for reasoning_content if content is None (GPT-OSS reasoning mode)
+            if not content and hasattr(message, 'reasoning_content') and message.reasoning_content:
+                print(f"[DEBUG] GPT-OSS reasoning mode detected - extracting from reasoning_content")
+                reasoning_text = message.reasoning_content
+                json_match = re.search(r'\{[^{}]*"(?:instructions|grid|description)"[^{}]*\}', reasoning_text, re.DOTALL)
+                if json_match:
+                    content = json_match.group(0)
+                    print(f"[DEBUG] Extracted JSON from reasoning_content: {content[:200]}")
+
+            # Only log if there's an issue or on retry attempts
+            if attempt > 1 or finish_reason == 'length' or not content:
+                print(f"[DEBUG] vLLM Response - finish_reason: {finish_reason}")
+                print(f"[DEBUG] vLLM Response - Content type: {type(content)}")
+                print(f"[DEBUG] vLLM Response - Content length: {len(content) if content else 0}")
+
+            # If finish_reason is 'length' and we haven't tried max tokens yet, continue to next iteration
+            if finish_reason == 'length' and attempt < len(max_tokens_list):
+                print(f"[DEBUG] Response truncated at {max_tokens} tokens, trying with more tokens...")
+                continue
+
+            if not content:
+                raise Exception(f"Empty response. finish_reason: {finish_reason}")
+
+            # Try to parse JSON
+            json_data = json.loads(content)
+            output: BMType = structure.model_validate(json_data)
+
+            if attempt > 1:
+                print(f"[DEBUG] SUCCESS on attempt {attempt} with max_tokens={max_tokens}")
+
+            return output
+
+        except json.JSONDecodeError as e:
+            last_error = Exception(f"Failed to parse JSON: {e}\nResponse: {content[:500] if content else 'None'}")
+            if attempt < len(max_tokens_list):
+                print(f"[DEBUG] JSON parse error, retrying with more tokens...")
+                continue
+        except Exception as e:
+            last_error = e
+            if attempt < len(max_tokens_list) and ("length" in str(e).lower() or "empty" in str(e).lower()):
+                print(f"[DEBUG] Error: {e}, retrying with more tokens...")
+                continue
+
+    # All attempts failed
+    print(f"[ERROR] Failed after {len(max_tokens_list)} attempts with max_tokens up to {max_tokens_list[-1]}")
+    raise last_error if last_error else Exception("All retry attempts failed")
 
 
 async def _get_next_structure_gemini(

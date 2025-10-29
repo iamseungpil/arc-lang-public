@@ -1,0 +1,11 @@
+#!/bin/bash
+LOG_FILE="/data/arclang/logs/arc_gpt5pro_style.log"
+echo "=== Quick Status ==="
+echo "Completed: $(grep -c 'completed!' $LOG_FILE 2>/dev/null || echo 0) / 400"
+echo "Latest:"
+grep "correct count" $LOG_FILE 2>/dev/null | tail -3 || echo "No results yet"
+echo ""
+echo "Progressive strategy stats:"
+echo "- Attempt 1 (8k): $(grep -c 'Attempt 1/4' $LOG_FILE 2>/dev/null || echo 0)"
+echo "- Attempt 2+ (>8k): $(grep -c 'SUCCESS on attempt [2-4]' $LOG_FILE 2>/dev/null || echo 0)"
+echo "- Failed at 20k: $(grep -c 'Failed after 4 attempts' $LOG_FILE 2>/dev/null || echo 0)"
